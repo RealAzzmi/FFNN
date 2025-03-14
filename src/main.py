@@ -59,9 +59,10 @@ def sigmoid_derivative(x):
 ###################
 
 class NeuralNetwork:
-    def __init__(self, layer_sizes, hidden_layer_activation_functions=[], loss_function=binary_cross_entropy, learning_rate=0.01, max_iter=1000, batch_size=64, verbose=False):
+    def __init__(self, layer_sizes, hidden_layer_activation_functions=[], output_layer_activation_function=sigmoid, loss_function=binary_cross_entropy, learning_rate=0.01, max_iter=1000, batch_size=64, verbose=False):
         self.layer_sizes = layer_sizes
         self.hidden_layer_activation_functions = hidden_layer_activation_functions
+        self.output_layer_activation_function = output_layer_activation_function
         self.loss_function = loss_function
         self.learning_rate = learning_rate
         self.max_iter = max_iter # or max_epoch
@@ -69,10 +70,14 @@ class NeuralNetwork:
         self.verbose = verbose
 
         self.hidden_layer_activation_functions = [None] + hidden_layer_activation_functions + [None]
+        self.hidden_layer_activation_derivatives = []
+        self.output_layer_activation_derivative = None
+        self.loss_derivative = None
+
         self.weights = [None]
         self.biases = [None]
-        self.hidden_layer_activation_derivatives = []
-        self.loss_derivative = None
+        
+        
 
 
         for func in self.hidden_layer_activation_functions:
@@ -85,10 +90,17 @@ class NeuralNetwork:
             elif func == sigmoid:
                 self.hidden_layer_activation_derivatives.append(sigmoid_derivative)
             else:
-                print("Activation function not yet implemented!")
+                print("Hidden layer activation function not yet implemented!")
                 exit(0)
         
-        if loss_function == binary_cross_entropy:
+        if self.output_layer_activation_function == sigmoid:
+            self.output_layer_activation_derivative = sigmoid_derivative
+        # TODO: elif:
+        else:
+            print("Output layer activation layer not yet implemented!")
+            exit(0)
+
+        if self.loss_function == binary_cross_entropy:
             self.loss_derivative = binary_cross_entropy_derivative
         # TODO: elif: func == ...:
         else:
@@ -96,7 +108,7 @@ class NeuralNetwork:
             exit(0)
 
         assert self.loss_derivative is not None
-        print(len(self.hidden_layer_activation_derivatives), len(self.hidden_layer_activation_functions))
+        assert self.output_layer_activation_derivative is not None
         assert len(self.hidden_layer_activation_derivatives) == len(self.hidden_layer_activation_functions)
 
         K = len(self.layer_sizes)
@@ -137,11 +149,12 @@ class NeuralNetwork:
         
 
         # 3. Output layer: # i = k-1
-        # Calculates Z_{k-1} without needing to calculate A_{k-1} because the output layer does not have an activation function using our convention.
+        # The activation is a special activation function since it is the output layer activation function so it depends on the task being done (for instance, sigmoid for binary classification)
         preactivations.append(np.dot(activations[-1], self.weights[K-1]) + self.biases[K-1])
+        activations.append(self.output_layer_activation_function(preactivations[-1]))
         
-        assert (len(preactivations) == len(activations) + 1)
-        for i in range(1,K-1):
+        # assert (len(preactivations) == len(activations) + 1)
+        for i in range(1,K):
             assert activations[i].shape == (1, self.layer_sizes[i]) or activations[i].shape == (self.layer_sizes[i],)
 
         # print("Berhasil # 1")
@@ -156,11 +169,21 @@ class NeuralNetwork:
         # 1. Backward pass 1: Calculating dl/dz_i for i = k-1, ..., 1
         dldz_i = []
         # a. Base case, i = k-1
-        assert self.loss_derivative(y, preactivations[K-1]).shape == (1, self.layer_sizes[K-1]) or self.loss_derivative(y, preactivations[K-1]).shape == (self.layer_sizes[K-1],)
+        # Calculates Q1 = f'_{k-1}(z_{k-1}). Note that f_{k-1} is the output layer activation function
+        Q1 = self.output_layer_activation_derivative(preactivations[K-1])
+        assert Q1.shape == (1, self.layer_sizes[K-1]) or Q1.shape == (self.layer_sizes[K-1],)
+        
+        # Calculates Q2: dl/da_{k-1}
+        Q2 = self.loss_derivative(y, activations[-1])
+        assert Q2.shape == (1, self.layer_sizes[K-1]) or Q2.shape == (self.layer_sizes[K-1],)
+        
+        # The final result is Q1 ⊙ Q2 where ⊙ is component-wise multiplication
+        assert (Q1 * Q2).shape == (1, self.layer_sizes[K-1]) or (Q1 * Q2).shape == (self.layer_sizes[K-1],)
+        dldz_i.append(Q1 * Q2)
 
         # print("Berhasil # 2")
         # exit(0)
-        dldz_i.append(self.loss_derivative(y, preactivations[K-1]))
+        
         
         # b. Inductive case, i = k-2, .., 1
         for i in range(K-2, 0, -1):
@@ -220,6 +243,8 @@ class NeuralNetwork:
         # For every iteration/epoch,
         for i in range(self.max_iter):
             print(i, "th epoch/iteration")
+            # print("Weights", self.weights)
+            # print("Biases", self.biases)
 
             # Shuffle
             indices = np.random.permutation(n_input)
@@ -238,7 +263,7 @@ class NeuralNetwork:
                 weights_update = [np.zeros_like(w) if w is not None else None for w in self.weights]
                 biases_update = [np.zeros_like(b) if b is not None else None for b in self.biases]
 
-                assert len(X_batch) == len(y_batch)
+                assert len(X_batch) == len(y_batch) and len(X_batch) == self.batch_size
 
                 for X_inp, y_inp in zip(X_batch, y_batch):
                     current_weights_update, current_biases_update = self.calculate_updated_weights_and_biases(X_inp, y_inp)
@@ -246,8 +271,8 @@ class NeuralNetwork:
                     biases_update = [w1 + w2 if w1 is not None else None for w1, w2 in zip(biases_update, current_biases_update)]
 
                 # Update weights and biases
-                self.weights = [w1 - self.learning_rate * w2 if w1 is not None else None for w1, w2 in zip(self.weights, weights_update)]
-                self.biases = [w1 - self.learning_rate * w2 if w1 is not None else None for w1, w2 in zip(self.biases, biases_update)]
+                self.weights = [w1 - self.learning_rate * w2 / self.batch_size if w1 is not None else None for w1, w2 in zip(self.weights, weights_update)]
+                self.biases = [w1 - self.learning_rate * w2 / self.batch_size if w1 is not None else None for w1, w2 in zip(self.biases, biases_update)]
             
     
     def predict(self, X):
@@ -255,7 +280,7 @@ class NeuralNetwork:
         if X.shape[0] == 1:
             # Single input case - just process directly
             preactivations, _ = self.forward_propagation(X)
-            y_pred = preactivations[-1] >= 0.5
+            y_pred = [-1] >= 0.5
             return y_pred.astype(int)
         else:
             # Process each row individually and stack results
@@ -264,7 +289,6 @@ class NeuralNetwork:
                 single_input = X[i:i+1]  # Keep it as a 2D array with shape (1, features)
                 preactivations, _ = self.forward_propagation(single_input)
                 pred = preactivations[-1] >= 0.5
-                print("Pred=", preactivations[-1])
                 predictions.append(pred.astype(int))
             
             # Stack all predictions together
@@ -277,8 +301,9 @@ class NeuralNetwork:
 
 # Train the Neural Network
 nn = NeuralNetwork(
-    layer_sizes=[2, 32, 16, 1, 1], # 1 input layer (2), 3 hidden layer (32, 16, 1), 1 output layer (1) 
-    hidden_layer_activation_functions=[relu, relu, sigmoid], # relu in the first hidden layer, relu in the second hidden layer, sigmoid in the last/third hidden layer because we are doing binary classification.
+    layer_sizes=[2, 32, 16, 1], # 1 input layer (with size 2), 2 hidden layer (with sizes 32, 16), 1 output layer (with size 1) 
+    hidden_layer_activation_functions=[relu, relu], # relu in the first hidden layer, relu in the second hidden layer
+    output_layer_activation_function=sigmoid, # because we are doing binary classification
     loss_function=binary_cross_entropy, # because it is a classification task
     learning_rate=0.001, # sklearn's default learning rate I think
     max_iter=200, # max 200 epoch
