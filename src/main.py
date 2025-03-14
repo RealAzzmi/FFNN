@@ -1,14 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
+
+from matplotlib.colors import ListedColormap
 from sklearn.datasets import make_moons
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
 
-from matplotlib.colors import ListedColormap
-
-import numpy as np
 
 X, y = make_moons(n_samples=1000, noise=0.2, random_state=42)
 X = StandardScaler().fit_transform(X)
@@ -20,6 +19,14 @@ y_test = y_test.reshape(-1, 1)
 ##########################################
 # Loss functions and their derivatives:
 ##########################################
+
+# Mean Squared Error
+def mean_squared_error(y_true, y_pred):
+    return np.mean((y_true - y_pred) ** 2)
+
+# Derivative of Mean Squared Error
+def mean_squared_error_derivative(y_true, y_pred):
+    return (2 / y_true.shape[0]) * (y_pred - y_true)
 
 # Binary Cross-Entropy
 def binary_cross_entropy(y_true, y_pred):
@@ -35,9 +42,29 @@ def binary_cross_entropy_derivative(y_true, y_pred):
     y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
     return ((1 - y_true) / (1 - y_pred) - y_true / y_pred) / y_true.size
 
+# Categorical Cross-Entropy
+def categorical_cross_entropy(y_true, y_pred):
+    epsilon = 1e-12  # Avoid log(0)
+    y_pred = np.clip(y_pred, epsilon, 1. - epsilon)
+    return -np.sum(y_true * np.log(y_pred)) / y_true.shape[0]
+
+# Derivative of Categorical Cross-Entropy
+def categorical_cross_entropy_derivative(y_true, logits):
+    probs = softmax(logits)  # Compute softmax probabilities
+    return probs - y_true
+
 ################################################
 # Activation functions and their derivatives:
 ################################################
+
+# Linear function
+def linear(x):
+    return x
+
+# Derivative of Linear
+def linear_derivative(x):
+    return np.ones_like(x)
+
 
 # ReLU function
 def relu(x):
@@ -47,6 +74,7 @@ def relu(x):
 def relu_derivative(x):
     return np.where(x > 0, 1, 0)
 
+
 # Sigmoid function
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -55,6 +83,33 @@ def sigmoid(x):
 def sigmoid_derivative(x):
     s = sigmoid(x)
     return s * (1 - s)
+
+
+# Tanh function
+def tanh(x):
+    return np.tanh(x)
+
+# Derivative of Tanh
+def tanh_derivative(x):
+    return (2 / (np.exp(x) - np.exp(-x))) ** 2
+
+
+#Softmax function
+def softmax(x):
+    exp_x = np.exp(x - np.max(x))  
+    return exp_x / np.sum(exp_x, axis=1, keepdims=True)
+
+# Derivative of Softmax
+def softmax_derivative(x):
+    batch_size, num_classes = x.shape
+    jacobian = np.zeros((batch_size, num_classes, num_classes))
+
+    for i in range(batch_size):
+        s = x[i].reshape(-1, 1)  # Convert to column vector
+        jacobian[i] = np.diagflat(s) - np.dot(s, s.T)
+
+    return jacobian
+
 
 ###################
 # Neural Network
@@ -78,33 +133,44 @@ class NeuralNetwork:
 
         self.weights = [None]
         self.biases = [None]
-        
-        
-
 
         for func in self.hidden_layer_activation_functions:
             if func is None:
                 self.hidden_layer_activation_derivatives.append(None)
                 continue
 
-            if func == relu:
+            if func == linear:
+                self.hidden_layer_activation_derivatives.append(linear_derivative)
+            elif func == relu:
                 self.hidden_layer_activation_derivatives.append(relu_derivative)
             elif func == sigmoid:
                 self.hidden_layer_activation_derivatives.append(sigmoid_derivative)
+            elif func == tanh:
+                self.hidden_layer_activation_derivatives.append(tanh_derivative)
             else:
                 print("Hidden layer activation function not yet implemented!")
                 exit(0)
-        
-        if self.output_layer_activation_function == sigmoid:
+
+        if self.output_layer_activation_function == linear:
+            self.output_layer_activation_derivative = linear_derivative
+        elif self.output_layer_activation_function == relu:
+            self.output_layer_activation_derivative = relu_derivative
+        elif self.output_layer_activation_function == sigmoid:
             self.output_layer_activation_derivative = sigmoid_derivative
-        # TODO: elif:
+        elif self.output_layer_activation_function == tanh:
+            self.output_layer_activation_derivative = tanh_derivative
+        elif self.output_layer_activation_function == softmax:
+            self.output_layer_activation_derivative = softmax_derivative
         else:
             print("Output layer activation layer not yet implemented!")
             exit(0)
 
-        if self.loss_function == binary_cross_entropy:
+        if self.loss_function == mean_squared_error:
+            self.loss_derivative = mean_squared_error_derivative
+        elif self.loss_function == binary_cross_entropy:
             self.loss_derivative = binary_cross_entropy_derivative
-        # TODO: elif: func == ...:
+        elif self.loss_function == categorical_cross_entropy:
+            self.loss_derivative = categorical_cross_entropy_derivative
         else:
             print("Loss function not yet implemented!")
             exit(0)
