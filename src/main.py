@@ -281,16 +281,17 @@ class NeuralNetwork:
         # Check if X is a single input or multiple inputs
         if X.shape[0] == 1:
             # Single input case - just process directly
-            preactivations, _ = self.forward_propagation(X)
-            y_pred = [-1] >= 0.5
+            _, activations = self.forward_propagation(X)
+            y_pred = activations[-1] >= 0.5
             return y_pred.astype(int)
         else:
             # Process each row individually and stack results
             predictions = []
             for i in range(X.shape[0]):
                 single_input = X[i:i+1]  # Keep it as a 2D array with shape (1, features)
-                preactivations, _ = self.forward_propagation(single_input)
-                pred = preactivations[-1] >= 0.5
+                _, activations = self.forward_propagation(single_input)
+                pred = activations[-1] >= 0.5
+
                 predictions.append(pred.astype(int))
             
             # Stack all predictions together
