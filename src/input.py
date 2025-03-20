@@ -12,7 +12,7 @@ def get_activation_function(name):
         'linear': linear,
         'softmax': softmax
     }
-    return activations.get(name, relu)  # Default to relu if not found
+    return activations.get(name, relu)  
 
 # Function to map loss function names to actual functions
 def get_loss_function(name):
@@ -21,7 +21,7 @@ def get_loss_function(name):
         'mean_squared_error': mean_squared_error,
         'categorical_cross_entropy': categorical_cross_entropy
     }
-    return losses.get(name, binary_cross_entropy)  # Default to binary_cross_entropy if not found
+    return losses.get(name, binary_cross_entropy)  
 
 # Function to get user input with default value
 def get_input(prompt, default):
@@ -110,14 +110,63 @@ def get_config_interactively():
     print("\033[93mYou can start by configuring the FFNN yourself \nor go with the default settings.\033[0m")
     print("\033[96m" + "=" * 50 + "\033[0m")
 
+    activation_options = {
+        '1': ('Linear', linear),
+        '2': ('ReLU', relu),
+        '3': ('Sigmoid', sigmoid),
+        '4': ('Tanh', tanh)
+    }
+
+    loss_function_options = {
+        '1': ('Binary Cross-Entropy', binary_cross_entropy),
+        '2': ('Mean Squared Error', mean_squared_error),
+        '3': ('Categorical Cross-Entropy', categorical_cross_entropy)
+    }
+
+    def get_choice(prompt, options, default_key):
+        print(prompt)
+        for key, (name, _) in options.items():
+            print(f"{key}. {name}")
+        choice = input(f"Enter your choice (default: {default_key}): ").strip()
+        return options.get(choice, options[default_key])[1]
+
+    # Get user input for configuration
     layer_sizes = parse_layer_sizes(get_input(f"How many neurons in each layer? (default: {LAYER_SIZES}): ", str(LAYER_SIZES)))
-    hidden_activations = parse_hidden_activations(get_input(f"Hidden layer activation functions? (default: [relu, relu]): ", str(HIDDEN_LAYER_ACTIVATIONS)))
-    output_activation = get_activation_function(get_input(f"Output layer activation function? (default: {OUTPUT_LAYER_ACTIVATION.__name__}): ", OUTPUT_LAYER_ACTIVATION.__name__))
-    loss_function = get_loss_function(get_input(f"Loss function? (default: {LOSS_FUNCTION.__name__}): ", LOSS_FUNCTION.__name__))
+
+    # Get hidden layer activation functions
+    hidden_activations = []
+    for i in range(len(layer_sizes) - 2):
+        print(f"\nHidden Layer {i + 1}:")
+        activation = get_choice(
+            "Activation function you can choose are:",
+            activation_options,
+            default_key='2' 
+        )
+        hidden_activations.append(activation)
+
+    # Get output layer activation function
+    print("\nOutput Layer:")
+    output_activation = get_choice(
+        "Activation function you can choose are:",
+        activation_options,
+        default_key='3' 
+    )
+
+    # Get loss function
+    print("\nLoss Function:")
+    loss_function = get_choice(
+        "Loss function you can choose are:",
+        loss_function_options,
+        default_key='1'
+    )
+
+    # Get other parameters
     learning_rate = float(get_input(f"Learning rate? (default: {LEARNING_RATE}): ", str(LEARNING_RATE)))
     max_iter = int(get_input(f"Maximum iterations? (default: {MAX_ITER}): ", str(MAX_ITER)))
     batch_size = int(get_input(f"Batch size? (default: {BATCH_SIZE}): ", str(BATCH_SIZE)))
-    verbose = get_input(f"Verbose mode? (True/False, default: {VERBOSE}): ", str(VERBOSE)).lower() == "true"
+
+    # Get verbose mode
+    verbose = get_input("Would you like to see progress during training? (yes/no, default: yes): ", "yes").lower() == "yes"
 
     print("==================================================")
     print("Now, please wait for your program to run.")
