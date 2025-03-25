@@ -1,0 +1,186 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+from sklearn.datasets import fetch_openml
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+# Import your neural network implementation
+# Assuming it's in a file called neural_network.py in the same directory
+from neural_network import NeuralNetwork, relu, softmax, categorical_cross_entropy
+
+def load_mnist_data(n_samples=None):
+    """Load MNIST dataset and preprocess it."""
+    print("Loading MNIST dataset...")
+    # Load data from https://www.openml.org/d/554
+    X, y = fetch_openml('mnist_784', version=1, return_X_y=True, parser='auto')
+    
+    # Convert labels to integers
+    y = y.astype(int)
+    
+    # Limit the number of samples if specified
+    if n_samples is not None:
+        X = X[:n_samples]
+        y = y[:n_samples]
+    
+    # Scale features to [0, 1] range
+    X = X / 255.0
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42)
+    
+    print(f"Data loaded: {X_train.shape[0]} training samples, {X_test.shape[0]} test samples")
+    return X_train, X_test, y_train, y_test
+
+def one_hot_encode(y, n_classes=10):
+    """Convert integer labels to one-hot encoded vectors."""
+    y_one_hot = np.zeros((y.shape[0], n_classes))
+    for i, label in enumerate(y):
+        y_one_hot[i, label] = 1
+    return y_one_hot
+
+def visualize_results(custom_losses, sklearn_accuracy, custom_accuracy):
+    """Visualize the training loss and comparison of accuracies."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # Plot training loss
+    ax1.plot(custom_losses)
+    ax1.set_title('Custom Neural Network Training Loss')
+    ax1.set_xlabel('Epochs')
+    ax1.set_ylabel('Loss')
+    ax1.grid(True)
+    
+    # Plot accuracy comparison
+    models = ['Scikit-Learn MLP', 'Custom Neural Network']
+    accuracies = [sklearn_accuracy, custom_accuracy]
+    
+    ax2.bar(models, accuracies, color=['blue', 'orange'])
+    ax2.set_title('Model Accuracy Comparison')
+    ax2.set_ylabel('Accuracy')
+    ax2.set_ylim(0, 1)
+    ax2.yaxis.set_ticks(np.arange(0, 1.1, 0.1))
+    ax2.grid(axis='y')
+    
+    for i, v in enumerate(accuracies):
+        ax2.text(i, v + 0.01, f"{v:.4f}", ha='center')
+    
+    plt.tight_layout()
+    # plt.savefig('mnist_comparison_results.png')
+    plt.show()
+
+def visualize_confusion_matrices(y_test, sklearn_preds, custom_preds):
+    """Visualize confusion matrices for both models."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Sklearn MLP confusion matrix
+    cm_sklearn = confusion_matrix(y_test, sklearn_preds)
+    im1 = ax1.imshow(cm_sklearn, interpolation='nearest', cmap=plt.cm.Blues)
+    ax1.set_title('Scikit-Learn MLP Confusion Matrix')
+    ax1.set_xlabel('Predicted')
+    ax1.set_ylabel('True')
+    ax1.set_xticks(np.arange(10))
+    ax1.set_yticks(np.arange(10))
+    fig.colorbar(im1, ax=ax1)
+    
+    # Custom NN confusion matrix
+    cm_custom = confusion_matrix(y_test, custom_preds)
+    im2 = ax2.imshow(cm_custom, interpolation='nearest', cmap=plt.cm.Blues)
+    ax2.set_title('Custom Neural Network Confusion Matrix')
+    ax2.set_xlabel('Predicted')
+    ax2.set_ylabel('True')
+    ax2.set_xticks(np.arange(10))
+    ax2.set_yticks(np.arange(10))
+    fig.colorbar(im2, ax=ax2)
+    
+    plt.tight_layout()
+    # plt.savefig('mnist_confusion_matrices.png')
+    plt.show()
+
+
+
+def main():
+    # Load and preprocess the MNIST dataset
+    # Use a smaller subset for faster training
+    X_train, X_test, y_train, y_test = load_mnist_data(n_samples=1000)
+    
+    # One-hot encode the target for custom neural network
+    y_train_one_hot = one_hot_encode(y_train)
+    
+    # Train Scikit-Learn MLP Classifier
+    print("\nTraining Scikit-Learn MLP Classifier...")
+    start_time = time.time()
+    
+    sklearn_mlp = MLPClassifier(
+        hidden_layer_sizes=(128, 64),
+        activation='relu',
+        solver='adam',
+        alpha=0.0001,
+        batch_size=256,
+        learning_rate_init=0.001,
+        max_iter=50,
+        verbose=True,
+        random_state=42
+    )
+    
+    sklearn_mlp.fit(X_train, y_train)
+    sklearn_time = time.time() - start_time
+    print(f"Scikit-Learn MLP training time: {sklearn_time:.2f} seconds")
+    
+    # Train Custom Neural Network
+    print("\nTraining Custom Neural Network...")
+    start_time = time.time()
+    
+    # Input size is 784 (28x28 pixels), output size is 10 (digit classes 0-9)
+    custom_nn = NeuralNetwork(
+        layer_sizes=[784, 128, 64, 10],
+        hidden_layer_activation_functions=[relu, relu],
+        output_layer_activation_function=softmax,
+        loss_function=categorical_cross_entropy,
+        learning_rate=0.001,
+        max_iter=50,
+        batch_size=256,
+        optimizer="adam",
+        initialization_method="he",
+        verbose=True
+    )
+    
+    # Prepare the data for custom NN
+    custom_losses = []
+    
+    # Train the custom neural network one sample at a time
+    custom_losses = custom_nn.fit(X_train.values, y_train_one_hot)
+    
+    custom_time = time.time() - start_time
+    print(f"Custom Neural Network training time: {custom_time:.2f} seconds")
+    
+    # Evaluate Scikit-Learn MLP
+    sklearn_preds = sklearn_mlp.predict(X_test)
+    sklearn_accuracy = accuracy_score(y_test, sklearn_preds)
+    print(f"\nScikit-Learn MLP Accuracy: {sklearn_accuracy:.4f}")
+    print("\nScikit-Learn MLP Classification Report:")
+    print(classification_report(y_test, sklearn_preds))
+    
+    # Evaluate Custom Neural Network
+    custom_probs = custom_nn.predict(X_test.values)
+    custom_preds = np.argmax(custom_probs, axis=1)
+    custom_accuracy = accuracy_score(y_test, custom_preds)
+    print(f"\nCustom Neural Network Accuracy: {custom_accuracy:.4f}")
+    print("\nCustom Neural Network Classification Report:")
+    print(classification_report(y_test, custom_preds))
+    
+    # Visualize results
+    print("\nGenerating visualizations...")
+    visualize_results(custom_losses, sklearn_accuracy, custom_accuracy)
+    visualize_confusion_matrices(y_test, sklearn_preds, custom_preds)
+    
+    # Compare training time
+    print(f"\nTraining time comparison:")
+    print(f"Scikit-Learn MLP: {sklearn_time:.2f} seconds")
+    print(f"Custom Neural Network: {custom_time:.2f} seconds")
+    print(f"Ratio (Custom/Scikit-Learn): {custom_time/sklearn_time:.2f}x")
+
+if __name__ == "__main__":
+    main()
