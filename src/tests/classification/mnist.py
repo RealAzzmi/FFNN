@@ -6,6 +6,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from loadsave import save_neural_network, load_neural_network
 
 # Import your neural network implementation
 # Assuming it's in a file called neural_network.py in the same directory
@@ -99,6 +100,45 @@ def visualize_confusion_matrices(y_test, sklearn_preds, custom_preds):
     # plt.savefig('mnist_confusion_matrices.png')
     plt.show()
 
+def use_mnist(custom_nn):
+    X_train, X_test, y_train, y_test = load_mnist_data(n_samples=1000)
+    y_train_one_hot = one_hot_encode(y_train)
+
+    #Train Sklearn
+    print("\nTraining Scikit-Learn MLP Classifier...")
+    start_time = time.time()
+    
+    sklearn_mlp = MLPClassifier(
+        hidden_layer_sizes=(128, 64),
+        activation='relu',
+        solver='adam',
+        alpha=0.0001,
+        batch_size=256,
+        learning_rate_init=0.001,
+        max_iter=50,
+        verbose=True,
+        random_state=42
+    )
+    
+    sklearn_mlp.fit(X_train, y_train)
+    sklearn_time = time.time() - start_time
+    sklearn_preds = sklearn_mlp.predict(X_test)
+    sklearn_accuracy = accuracy_score(y_test, sklearn_preds)
+    conf_matrix_sklearn = confusion_matrix(y_test, sklearn_preds)
+
+    # Train Custom Neural Network
+    print("\nTraining Custom Neural Network...")
+    start_time = time.time()
+    custom_losses = []
+    custom_losses, final_gradients = custom_nn.fit(X_train.values, y_train_one_hot)
+    custom_time = time.time() - start_time
+    custom_probs = custom_nn.predict(X_test.values)
+    custom_preds = np.argmax(custom_probs, axis=1)
+    custom_accuracy = accuracy_score(y_test, custom_preds)
+    conf_matrix_custom = confusion_matrix(y_test, custom_preds)
+
+    return custom_nn, custom_losses, final_gradients, custom_time, custom_accuracy, conf_matrix_custom, sklearn_time, sklearn_accuracy, conf_matrix_sklearn
+
 
 
 def main():
@@ -128,30 +168,37 @@ def main():
     sklearn_mlp.fit(X_train, y_train)
     sklearn_time = time.time() - start_time
     print(f"Scikit-Learn MLP training time: {sklearn_time:.2f} seconds")
+
+    is_pretrained_model = input("Do you wish to use pretrained model? (y/n)")
+    if is_pretrained_model == "y":
+        pretrained_model_file = input("Pretrained model file name: ")
+        custom_nn = load_neural_network(pretrained_model_file, NeuralNetwork)
+    else:  
+        # Input size is 784 (28x28 pixels), output size is 10 (digit classes 0-9)
+        custom_nn = NeuralNetwork(
+            layer_sizes=[784, 128, 64, 10],
+            hidden_layer_activation_functions=[relu, relu],
+            output_layer_activation_function=softmax,
+            loss_function=categorical_cross_entropy,
+            learning_rate=0.001,
+            max_iter=50,
+            batch_size=256,
+            optimizer="adam",
+            initialization_method="he",
+            verbose=True
+        )
+        # Train Custom Neural Network
+        print("\nTraining Custom Neural Network...")
     
-    # Train Custom Neural Network
-    print("\nTraining Custom Neural Network...")
     start_time = time.time()
-    
-    # Input size is 784 (28x28 pixels), output size is 10 (digit classes 0-9)
-    custom_nn = NeuralNetwork(
-        layer_sizes=[784, 128, 64, 10],
-        hidden_layer_activation_functions=[relu, relu],
-        output_layer_activation_function=softmax,
-        loss_function=categorical_cross_entropy,
-        learning_rate=0.001,
-        max_iter=50,
-        batch_size=256,
-        optimizer="adam",
-        initialization_method="he",
-        verbose=True
-    )
     
     # Prepare the data for custom NN
     custom_losses = []
     
     # Train the custom neural network one sample at a time
-    custom_losses = custom_nn.fit(X_train.values, y_train_one_hot)
+    custom_losses, _ = custom_nn.fit(X_train.values, y_train_one_hot)
+
+    
     
     custom_time = time.time() - start_time
     print(f"Custom Neural Network training time: {custom_time:.2f} seconds")
@@ -170,6 +217,10 @@ def main():
     print(f"\nCustom Neural Network Accuracy: {custom_accuracy:.4f}")
     print("\nCustom Neural Network Classification Report:")
     print(classification_report(y_test, custom_preds))
+
+    #Save results
+    save_neural_network(custom_nn, 'mnist_neural_network.pkl')
+
     
     # Visualize results
     print("\nGenerating visualizations...")

@@ -154,7 +154,7 @@ def main():
     
     # Train and time custom NN
     custom_start_time = time.time()
-    custom_loss_history = custom_nn.fit(X_train_scaled, y_train_onehot)
+    custom_loss_history, _ = custom_nn.fit(X_train_scaled, y_train_onehot)
     custom_train_time = time.time() - custom_start_time
     print(f"Custom NN training time: {custom_train_time:.2f} seconds")
     

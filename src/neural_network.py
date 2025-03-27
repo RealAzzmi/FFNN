@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
+import networkx as nx
 
 
 ##########################################
@@ -458,10 +459,12 @@ class NeuralNetwork:
         n_batches = max(n_input // self.batch_size, 1)
         
         losses = []
+        final_gradients = [None] * len(self.weights)
         
         # For every epoch/iteration
         for i in range(self.max_iter):
             epoch_loss = 0.0
+            current_epoch_gradients = []
             
             # Learning rate schedule - only for SGD, not for Adam
             if self.optimizer == "sgd":
@@ -504,6 +507,7 @@ class NeuralNetwork:
                     # Accumulate gradients
                     weights_update = [w1 + w2 if w1 is not None else None for w1, w2 in zip(weights_update, current_weights_update)]
                     biases_update = [b1 + b2 if b1 is not None else None for b1, b2 in zip(biases_update, current_biases_update)]
+
                 
                 # Average loss for this batch
                 batch_loss /= len(X_batch)
@@ -524,6 +528,10 @@ class NeuralNetwork:
                     # Use SGD
                     self.weights = [w1 - current_learning_rate * w2 / batch_size if w1 is not None else None for w1, w2 in zip(self.weights, weights_update)]
                     self.biases = [b1 - current_learning_rate * b2 / batch_size if b1 is not None else None for b1, b2 in zip(self.biases, biases_update)]
+                
+                # Store final gradients (after last iteration)
+                if i == self.max_iter - 1:
+                    final_gradients = weights_update
             
             # Average loss for this epoch
             epoch_loss /= n_batches
@@ -533,7 +541,7 @@ class NeuralNetwork:
             if self.verbose and i % 100 == 0:
                 print(f"Epoch {i}, Loss: {epoch_loss:.6f}, Learning rate: {current_learning_rate:.6f}")
                 
-        return losses
+        return losses, final_gradients
 
     def predict(self, X):
         # Handle single or multiple inputs
@@ -553,3 +561,106 @@ class NeuralNetwork:
                 predictions.append(pred)
             
             return np.vstack(predictions)
+
+    def visualize_neural_network(self, max_neurons_to_display=50, save_path=None):
+        """
+        Visualize the neural network structure with weights and biases.
+        
+        Parameters:
+        ----------
+        max_neurons_to_display : int, optional
+            Maximum number of neurons to display per layer to prevent overcrowding
+        save_path : str, optional
+            Path to save the visualization image
+        """
+        # Create a new figure
+        plt.figure(figsize=(15, 10))
+        
+        # Create a directed graph
+        G = nx.DiGraph()
+        
+        # Prepare position layout
+        pos = {}
+        layer_spacing = 1.0
+        neuron_spacing = 0.2
+        
+        # Compute layer positions and add nodes
+        for layer_idx, layer_size in enumerate(self.layer_sizes[1:], start=1):
+            # Limit number of displayed neurons
+            displayed_neurons = min(layer_size, max_neurons_to_display)
+            
+            for neuron_idx in range(displayed_neurons):
+                # X position based on layer
+                x = layer_idx * layer_spacing
+                
+                # Y position based on neuron index, centered
+                y = neuron_idx * neuron_spacing - (displayed_neurons * neuron_spacing / 2)
+                
+                # Create unique node identifier
+                node_id = f'L{layer_idx}_N{neuron_idx}'
+                
+                # Add node with color representing bias
+                bias = self.biases[layer_idx][0, neuron_idx] if self.biases[layer_idx] is not None else 0
+                
+                G.add_node(node_id, pos=(x, y), bias=bias)
+                pos[node_id] = (x, y)
+        
+        # Add edges with weights
+        for layer_idx in range(1, len(self.layer_sizes)-1):
+            prev_layer_neurons = min(self.layer_sizes[layer_idx], max_neurons_to_display)
+            curr_layer_neurons = min(self.layer_sizes[layer_idx+1], max_neurons_to_display)
+            
+            for prev_neuron in range(prev_layer_neurons):
+                for curr_neuron in range(curr_layer_neurons):
+                    # Unique identifiers
+                    from_node = f'L{layer_idx}_N{prev_neuron}'
+                    to_node = f'L{layer_idx+1}_N{curr_neuron}'
+                    
+                    # Get weight
+                    weight = self.weights[layer_idx+1][prev_neuron, curr_neuron]
+                    
+                    # Add weighted edge
+                    G.add_edge(from_node, to_node, weight=weight)
+        
+        # Prepare color mappings
+        def safe_normalize(values):
+            """Safely normalize values to [0, 1] range."""
+            if not values:
+                return lambda x: 0.5
+            min_val, max_val = min(values), max(values)
+            return lambda x: 0.5 if min_val == max_val else (x - min_val) / (max_val - min_val)
+        
+        # Collect bias and weight values for normalization
+        bias_values = [G.nodes[node]['bias'] for node in G.nodes()]
+        weight_values = [G[u][v]['weight'] for (u,v) in G.edges()]
+        
+        # Create normalizers
+        bias_normalizer = safe_normalize(bias_values)
+        weight_normalizer = safe_normalize(weight_values)
+        
+        # Draw the graph
+        plt.title('Neural Network Structure Visualization')
+        
+        # Draw nodes
+        nx.draw_networkx_nodes(G, pos, 
+                                node_color=[plt.cm.coolwarm(bias_normalizer(G.nodes[node]['bias'])) 
+                                            for node in G.nodes()],
+                                node_size=50, 
+                                alpha=0.7)
+        
+        # Draw edges
+        nx.draw_networkx_edges(G, pos, 
+                                edge_color=[plt.cm.RdBu_r(weight_normalizer(G[u][v]['weight'])) 
+                                            for (u,v) in G.edges()],
+                                width=1, 
+                                alpha=0.5)
+        
+        # Finalize plot
+        plt.axis('off')
+        plt.tight_layout()
+        
+        # Save or show the plot
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+        else:
+            plt.show()

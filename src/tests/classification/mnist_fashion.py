@@ -48,7 +48,8 @@ def plot_sample_images(X, y, class_names, num_samples=5):
             plt.axis('off')
     plt.tight_layout()
     # plt.savefig('fashion_mnist_samples.png')
-    plt.close()
+    # plt.close()
+    plt.show()
 
 def plot_training_histories(custom_loss_history, epochs):
     plt.figure(figsize=(10, 6))
@@ -60,7 +61,8 @@ def plot_training_histories(custom_loss_history, epochs):
     plt.legend()
     plt.grid(True)
     # plt.savefig('training_history.png')
-    plt.close()
+    # plt.close()
+    plt.show()
 
 def main():
     # Set random seed for reproducibility
@@ -138,7 +140,7 @@ def main():
     start_time_custom = time.time()
     
     # Train the custom neural network
-    custom_loss_history = custom_nn.fit(X_train_scaled, y_train_onehot)
+    custom_loss_history, _ = custom_nn.fit(X_train_scaled, y_train_onehot)
     
     # End the timer for custom NN training
     training_time_custom = time.time() - start_time_custom

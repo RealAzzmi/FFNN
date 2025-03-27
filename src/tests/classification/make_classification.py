@@ -70,12 +70,12 @@ def train_custom_nn(X_train, y_train_one_hot, X_test, y_test_one_hot, hidden_lay
         max_iter=max_iter,
         batch_size=32,
         optimizer="adam",
-        l2_lambda=0.0001,  # Light regularization
+        l2_lambda=0.0001,  
         verbose=True
     )
     
     # Train the network
-    train_losses = custom_nn.fit(X_train, y_train_one_hot)
+    train_losses, final_gradients = custom_nn.fit(X_train, y_train_one_hot)
     
     training_time = time.time() - start_time
     
@@ -87,7 +87,7 @@ def train_custom_nn(X_train, y_train_one_hot, X_test, y_test_one_hot, hidden_lay
     accuracy = accuracy_score(y_test_orig, y_pred)
     conf_matrix = confusion_matrix(y_test_orig, y_pred)
     
-    return custom_nn, train_losses, accuracy, conf_matrix, training_time, y_pred, y_test_orig
+    return custom_nn, train_losses, accuracy, conf_matrix, training_time, y_pred, y_test_orig, final_gradients
 
 # Function to train and evaluate scikit-learn's MLPClassifier
 def train_sklearn_mlp(X_train, y_train, X_test, y_test, hidden_layer_sizes, max_iter=500):
@@ -196,6 +196,72 @@ def plot_prediction_distribution(custom_preds, sklearn_preds, true_labels, n_cla
     plt.tight_layout()
     plt.show()
 
+def plot_weight_distribution(weights, layers=None):
+    if layers is None:
+        layers = list(range(1, len(weights)))
+    
+    fig, axes = plt.subplots(len(layers), 1, figsize=(10, 4*len(layers)))
+    if len(layers) == 1:
+        axes = [axes]
+    
+    fig.suptitle('Weight Distributions per Layer', fontsize=16)
+    for i, layer in enumerate(layers):
+        layer_weights = weights[layer]
+        
+        if layer_weights is not None:
+            axes[i].hist(layer_weights.flatten(), bins=50, color='blue', alpha=0.7)
+            axes[i].set_title(f'Layer {layer} Weight Distribution')
+            axes[i].set_xlabel('Weight Values')
+            axes[i].set_ylabel('Frequency')
+            axes[i].grid(True, linestyle='--', alpha=0.7)
+        else:
+            axes[i].text(0.5, 0.5, 'No Weights', 
+                         horizontalalignment='center', 
+                         verticalalignment='center')
+    plt.tight_layout()
+    plt.show()
+
+def plot_weight_gradient_distribution(gradients, layers=None):
+    if layers is None:
+        layers = list(range(1, len(gradients)))
+    
+    fig, axes = plt.subplots(len(layers), 1, figsize=(12, 4*len(layers)))
+    if len(layers) == 1:
+        axes = [axes]
+    
+    fig.suptitle('Weight Gradient Distributions per Layer', fontsize=16)
+    for i, layer in enumerate(layers):
+        layer_gradients = gradients[layer]
+        
+        if layer_gradients is not None:
+            flat_gradients = layer_gradients.flatten()
+            mean = np.mean(flat_gradients)
+            median = np.median(flat_gradients)
+            std = np.std(flat_gradients)
+            iqr = np.percentile(flat_gradients, 75) - np.percentile(flat_gradients, 25)
+            bin_width = 2 * iqr / (len(flat_gradients) ** (1/3))
+            data_range = np.max(flat_gradients) - np.min(flat_gradients)
+            num_bins = max(int(data_range / bin_width), 50)
+            axes[i].hist(flat_gradients, bins=num_bins, color='red', alpha=0.7, edgecolor='black')
+
+            axes[i].hist(layer_gradients.flatten(), bins=50, color='red', alpha=0.7)
+            axes[i].axvline(mean, color='green', linestyle='dashed', linewidth=2, label=f'Mean: {mean:.4f}')
+            axes[i].axvline(median, color='blue', linestyle='dashed', linewidth=2, label=f'Median: {median:.4f}')
+            axes[i].set_title(f'Layer {layer} Weight Gradient Distribution\n'
+                               f'Mean: {mean:.4f}, Median: {median:.4f}, Std Dev: {std:.4f}', 
+                               fontsize=10)
+            axes[i].set_xlabel('Gradient Values')
+            axes[i].set_ylabel('Frequency')
+            axes[i].legend()
+            axes[i].grid(True, linestyle='--', alpha=0.7)
+        else:
+            axes[i].text(0.5, 0.5, 'No Gradients', 
+                         horizontalalignment='center', 
+                         verticalalignment='center')
+    
+    plt.tight_layout()
+    plt.show()
+
 # Main function to run the comparison
 def run_comparison():
     print("Generating dataset...")
@@ -216,7 +282,7 @@ def run_comparison():
     
     # Train and evaluate custom neural network
     print("\nTraining custom neural network...")
-    custom_nn, train_losses, custom_accuracy, custom_conf_matrix, custom_time, custom_pred, y_test_orig = train_custom_nn(
+    custom_nn, train_losses, custom_accuracy, custom_conf_matrix, custom_time, custom_pred, y_test_orig, final_gradients = train_custom_nn(
         X_train, y_train_one_hot, X_test, y_test_one_hot, hidden_layer_sizes, max_iter
     )
     
@@ -233,12 +299,14 @@ def run_comparison():
     print(f"Custom Neural Network Training Time: {custom_time:.2f} seconds")
     print(f"scikit-learn MLPClassifier Training Time: {sklearn_time:.2f} seconds")
     
+    plot_weight_distribution(custom_nn.weights)
+    plot_weight_gradient_distribution(final_gradients)
+
     # Plot confusion matrices
     plot_confusion_matrices(custom_conf_matrix, sklearn_conf_matrix, n_classes)
     
     # Plot loss curve for custom neural network
     plot_loss_curve(train_losses)
-    
     # Plot class prediction distributions
     plot_prediction_distribution(custom_pred, sklearn_pred, y_test_orig, n_classes)
     

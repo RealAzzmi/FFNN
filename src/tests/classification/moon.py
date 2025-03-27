@@ -93,7 +93,7 @@ custom_nn = NeuralNetwork(
 )
 
 # Train the custom neural network
-losses = custom_nn.fit(X_train, y_train_onehot)
+losses, _ = custom_nn.fit(X_train, y_train_onehot)
 custom_time = time.time() - start_time
 print(f"Training completed in {custom_time:.2f} seconds")
 

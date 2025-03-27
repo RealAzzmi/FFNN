@@ -95,20 +95,6 @@ def parse_args():
 
 # Function to get configuration interactively
 def get_config_interactively():
-    banner = r"""
-    ███████╗███████╗███╗   ██╗███╗   ██╗
-    ██╔════╝██╔════╝████╗  ██║████╗  ██║
-    █████╗  █████╗  ██╔██╗ ██║██╔██╗ ██║
-    ██╔══╝  ██╔══╝  ██║╚██╗██║██║╚██╗██║
-    ██║     ██║     ██║ ╚████║██║ ╚████║
-    ╚═╝     ╚═╝     ╚═╝  ╚═══╝╚═╝  ╚═══╝
-    """
-    print("\033[96m" + "=" * 50)
-    print(banner)
-    print("=" * 50)
-    print("\033[92mWelcome to \033[1mFFNN\033[0m\033[92m by Azmi, Shulha, and Nabila.\033[0m")
-    print("\033[93mYou can start by configuring the FFNN yourself \nor go with the default settings.\033[0m")
-    print("\033[96m" + "=" * 50 + "\033[0m")
 
     activation_options = {
         '1': ('Linear', linear),
@@ -169,7 +155,7 @@ def get_config_interactively():
     verbose = get_input("Would you like to see progress during training? (yes/no, default: yes): ", "yes").lower() == "yes"
 
     print("==================================================")
-    print("Now, please wait for your program to run.")
+    print("Done getting neural network configuration")
     print("==================================================")
 
     return {

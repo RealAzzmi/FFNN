@@ -458,10 +458,12 @@ class NeuralNetwork:
         n_batches = max(n_input // self.batch_size, 1)
         
         losses = []
+        final_gradients = [None] * len(self.weights)
         
         # For every epoch/iteration
         for i in range(self.max_iter):
             epoch_loss = 0.0
+            current_epoch_gradients = []
             
             # Learning rate schedule - only for SGD, not for Adam
             if self.optimizer == "sgd":
@@ -504,6 +506,7 @@ class NeuralNetwork:
                     # Accumulate gradients
                     weights_update = [w1 + w2 if w1 is not None else None for w1, w2 in zip(weights_update, current_weights_update)]
                     biases_update = [b1 + b2 if b1 is not None else None for b1, b2 in zip(biases_update, current_biases_update)]
+
                 
                 # Average loss for this batch
                 batch_loss /= len(X_batch)
@@ -524,6 +527,10 @@ class NeuralNetwork:
                     # Use SGD
                     self.weights = [w1 - current_learning_rate * w2 / batch_size if w1 is not None else None for w1, w2 in zip(self.weights, weights_update)]
                     self.biases = [b1 - current_learning_rate * b2 / batch_size if b1 is not None else None for b1, b2 in zip(self.biases, biases_update)]
+                
+                # Store final gradients (after last iteration)
+                if i == self.max_iter - 1:
+                    final_gradients = weights_update
             
             # Average loss for this epoch
             epoch_loss /= n_batches
@@ -533,7 +540,7 @@ class NeuralNetwork:
             if self.verbose and i % 100 == 0:
                 print(f"Epoch {i}, Loss: {epoch_loss:.6f}, Learning rate: {current_learning_rate:.6f}")
                 
-        return losses
+        return losses, final_gradients
 
     def predict(self, X):
         # Handle single or multiple inputs
