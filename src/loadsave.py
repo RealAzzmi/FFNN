@@ -38,6 +38,9 @@ def save_neural_network(model, filename):
         # Model parameters
         'weights': model.weights,
         'biases': model.biases,
+        'losses': model.losses,
+        'gradients': model.gradients,
+        'val_losses': model.val_losses,
         
         # Adam optimizer parameters if applicable
         'm_weights': model.m_weights if hasattr(model, 'm_weights') else None,
@@ -96,6 +99,9 @@ def load_neural_network(filename, neural_network_class):
     # Restore model parameters
     model.weights = model_state['weights']
     model.biases = model_state['biases']
+    model.losses = model_state['losses']
+    model.gradient = model_state['gradients']
+    model.val_losses = model_state['val_losses']
     
     # Restore Adam optimizer parameters if they exist
     if model_state['optimizer'] == 'adam':

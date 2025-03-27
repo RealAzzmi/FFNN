@@ -23,7 +23,7 @@ def use_make_moon(nn):
 
     print("\nTraining custom neural network...")
     custom_start_time = time.time()
-    train_losses, final_gradients = nn.fit(X_train, y_train)
+    train_losses, final_gradients = nn.fit(X_train, y_train, X_test, y_test)
     custom_training_time = time.time() - custom_start_time
 
     # Evaluate Neural Network model

@@ -140,13 +140,18 @@ def plot_decision_boundary(X, y, model, model_type="Custom NN", ax=None):
     
     return ax
 
-def plot_loss_curve(train_losses):
+def plot_loss_curve(train_losses, validation_losses=None):
     plt.figure(figsize=(10, 6))
-    plt.plot(train_losses)
-    plt.title('Training Loss Curve - Custom Neural Network')
+    plt.plot(train_losses, color='blue', label='Training Loss')
+    
+    if validation_losses is not None:
+        plt.plot(validation_losses, color='red', label='Validation Loss')
+    
+    plt.title('Training and Validation Loss Curve')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.grid(True)
+    plt.legend()
     plt.show()
 
 def plot_decision_boundaries(X, y, X_test, y_test, models, model_names):

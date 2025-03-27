@@ -87,7 +87,7 @@ def main():
 
     is_plot_loss_curve = input("Do you wish to show training history loss curve? (y/n)")
     if is_plot_loss_curve=="y":
-        plot_loss_curve(train_losses)
+        plot_loss_curve(train_losses, nn.val_losses)
 
     is_save = input("Do you wish to save the file? (y/n)")
     if is_save=="y":

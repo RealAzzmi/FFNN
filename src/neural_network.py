@@ -160,6 +160,9 @@ class NeuralNetwork:
         self.batch_size = batch_size
         self.initialization_method = initialization_method
         self.verbose = verbose
+        self.losses = []
+        self.val_losses = []
+        self.gradients = []
         
         # Regularization parameters
         self.l1_lambda = l1_lambda
@@ -454,11 +457,12 @@ class NeuralNetwork:
             
         return new_weights, new_biases
 
-    def fit(self, X, y):
+    def fit(self, X, y, X_val=None, y_val=None):
         n_input = X.shape[0]
         n_batches = max(n_input // self.batch_size, 1)
         
-        losses = []
+        self.losses = []
+        self.val_losses = []
         final_gradients = [None] * len(self.weights)
         
         # For every epoch/iteration
@@ -532,17 +536,36 @@ class NeuralNetwork:
                 # Store final gradients (after last iteration)
                 if i == self.max_iter - 1:
                     final_gradients = weights_update
-            
+                    self.gradients = final_gradients
+
             # Average loss for this epoch
             epoch_loss /= n_batches
-            losses.append(epoch_loss)
+            self.losses.append(epoch_loss)
+
+            if X_val is not None and y_val is not None:
+                val_loss = self.calculate_validation_loss(X_val, y_val)
+                self.val_losses.append(val_loss)
             
             # Print progress
             if self.verbose and i % 100 == 0:
                 print(f"Epoch {i}, Loss: {epoch_loss:.6f}, Learning rate: {current_learning_rate:.6f}")
-                
-        return losses, final_gradients
+                if X_val is not None and y_val is not None:
+                    print(f"Epoch {i}, Validation Loss: {val_loss:.6f}")
 
+                
+        return self.losses, final_gradients
+
+    def calculate_validation_loss(self, X_val, y_val):
+        val_loss = 0.0
+        
+        for X_inp, y_inp in zip(X_val, y_val):
+            _, activations = self.forward_propagation(X_inp)
+            
+            current_val_loss = self.calculate_total_loss(y_inp, activations[-1])
+            val_loss += current_val_loss
+        
+        return val_loss / len(X_val)
+    
     def predict(self, X):
         # Handle single or multiple inputs
         if len(X.shape) == 1 or (len(X.shape) == 2 and X.shape[0] == 1):
