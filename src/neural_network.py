@@ -146,7 +146,8 @@ class NeuralNetwork:
     def __init__(self, layer_sizes, initialization_method=None, hidden_layer_activation_functions=[], 
                  output_layer_activation_function=None, loss_function=None, learning_rate=0.01, 
                  max_iter=1000, batch_size=64, optimizer="sgd", beta1=0.9, beta2=0.999, epsilon=1e-8, 
-                 l1_lambda=0.0, l2_lambda=0.0, verbose=False, seed=42):
+                 l1_lambda=0.0, l2_lambda=0.0, verbose=False, seed=42,  uniform_lower=-1.0, uniform_upper=1.0,
+                 normal_mean=0.0, normal_var=1.0):
         # Add random seed for reproducibility
         self.seed = seed
         np.random.seed(self.seed)
@@ -173,6 +174,11 @@ class NeuralNetwork:
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
+
+        self.uniform_lower = uniform_lower
+        self.uniform_upper = uniform_upper
+        self.normal_mean = normal_mean
+        self.normal_var = normal_var
         
         # Adam optimizer moment variables
         self.m_weights = None
@@ -262,8 +268,30 @@ class NeuralNetwork:
                 self.weights.append(np.random.randn(self.layer_sizes[i-1], self.layer_sizes[i]) * 1)
                 self.biases.append(np.random.randn(1, self.layer_sizes[i]) * 0.001)
             elif self.initialization_method == "random_uniform":
-                self.weights.append(np.random.rand(self.layer_sizes[i-1], self.layer_sizes[i]) * 1)
-                self.biases.append(np.random.rand(1, self.layer_sizes[i]) * 0.001)
+                self.weights.append(np.random.uniform(
+                    low=self.uniform_lower,
+                    high=self.uniform_upper,
+                    size=(self.layer_sizes[i-1], self.layer_sizes[i])
+                ))
+                self.biases.append(np.random.uniform(
+                    low=self.uniform_lower,
+                    high=self.uniform_upper,
+                    size=(1, self.layer_sizes[i])
+                ) * 0.001) 
+                
+            elif self.initialization_method == "random_normal":
+               
+                std = np.sqrt(self.normal_var)
+                self.weights.append(np.random.normal(
+                    loc=self.normal_mean,
+                    scale=std,
+                    size=(self.layer_sizes[i-1], self.layer_sizes[i])
+                ))
+                self.biases.append(np.random.normal(
+                    loc=self.normal_mean,
+                    scale=std,
+                    size=(1, self.layer_sizes[i])
+                ) * 0.001)  
             elif self.initialization_method == "xavier":
                 limit = np.sqrt(6 / (self.layer_sizes[i-1] + self.layer_sizes[i]))
                 self.weights.append(np.random.uniform(-limit, limit, (self.layer_sizes[i-1], self.layer_sizes[i])))
@@ -317,9 +345,11 @@ class NeuralNetwork:
         # Output layer
         preactivations.append(np.dot(activations[-1], self.weights[K-1]) + self.biases[K-1])
         activations.append(self.output_layer_activation_function(preactivations[-1]))
-        
+
+
         for i in range(1, K):
-            assert activations[i].shape == (1, self.layer_sizes[i]) or activations[i].shape == (self.layer_sizes[i],)
+            if len(activations[i].shape) == 1:
+                activations[i] = activations[i].reshape(1, -1)
 
         return (preactivations, activations)
     
@@ -346,6 +376,7 @@ class NeuralNetwork:
 
     def backward_propagation(self, preactivations, activations, X, y):
         K = len(self.layer_sizes)
+        batch_size = X.shape[0] if len(X.shape) > 1 else 1
 
         # Calculate dl/dz_i for output and hidden layers
         dldz_i = []
@@ -360,27 +391,54 @@ class NeuralNetwork:
             dldz_i.append(dldz_K_minus_1)
         else:
             # For other activation/loss combinations
-            Q1 = self.output_layer_activation_derivative(preactivations[K-1])
+            # Handle batch processing by applying the activation derivative to each example
+            dZ = np.zeros_like(preactivations[K-1])
             
-            if self.output_layer_activation_function != softmax:
-                if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
-                    Q1 = np.diag(Q1.flatten())
-                    
-            # Calculate loss derivative
-            Q2 = self.loss_derivative(y, activations[-1])
-            
-            # Final result is Q2 × Q1
-            dldz_i.append(np.dot(Q2, Q1))
+            # Apply activation derivative to each example in batch
+            for b in range(batch_size):
+                sample_preact = preactivations[K-1][b:b+1] if batch_size > 1 else preactivations[K-1]
+                sample_act = activations[-1][b:b+1] if batch_size > 1 else activations[-1]
+                sample_y = y[b:b+1] if batch_size > 1 else y
+                
+                Q1 = self.output_layer_activation_derivative(sample_preact)
+                
+                if self.output_layer_activation_function != softmax:
+                    if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
+                        Q1 = np.diag(Q1.flatten())
+                        
+                # Calculate loss derivative
+                Q2 = self.loss_derivative(sample_y, sample_act)
+                
+                # Apply to current example
+                dZ[b] = np.dot(Q2, Q1).flatten() if batch_size > 1 else np.dot(Q2, Q1)
+                
+            dldz_i.append(dZ)
 
         # Inductive case for hidden layers
         for i in range(K-2, 0, -1):
-            Q1 = self.hidden_layer_activation_derivatives[i](preactivations[i])
+            # Initialize gradient for this layer
+            dZ = np.zeros_like(preactivations[i])
             
-            if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
-                Q1 = np.diag(Q1.flatten())
-
-            Q2 = np.dot(dldz_i[-1], self.weights[i+1].T)
-            dldz_i.append(np.dot(Q2, Q1))
+            # Get upstream gradient
+            dA = dldz_i[-1]
+            
+            # Handle gradient for each example in batch
+            for b in range(batch_size):
+                # Get sample activation derivative
+                sample_preact = preactivations[i][b:b+1] if batch_size > 1 else preactivations[i]
+                Q1 = self.hidden_layer_activation_derivatives[i](sample_preact)
+                
+                if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
+                    Q1 = np.diag(Q1.flatten())
+                
+                # Get sample upstream gradient
+                sample_dA = dA[b:b+1] if batch_size > 1 else dA
+                
+                # Calculate gradient for this example
+                Q2 = np.dot(sample_dA, self.weights[i+1].T)
+                dZ[b] = np.dot(Q2, Q1).flatten() if batch_size > 1 else np.dot(Q2, Q1)
+                
+            dldz_i.append(dZ)
 
         dldz_i.append(None)
         dldz_i.reverse()
@@ -392,12 +450,25 @@ class NeuralNetwork:
         dldWi = [None]
 
         for i in range(1, K):
-            # dl/dbi = dl/dzi
-            dldbi.append(dldz_i[i])
+            # dl/dbi = sum of dl/dzi across batch
+            dldbi.append(np.sum(dldz_i[i], axis=0, keepdims=True))
             
             # dl/dwi = A_{i-1}^T dl/dz_i + regularization terms
-            base_gradient = np.dot(activations[i-1].T.reshape(-1, 1), dldz_i[i])
+            A_prev = activations[i-1]
+            dZ = dldz_i[i]
             
+            if len(A_prev.shape) == 1:
+                A_prev = A_prev.reshape(1, -1)
+            if len(dZ.shape) == 1:
+                dZ = dZ.reshape(1, -1)
+                
+            # Calculate gradients for all examples and sum
+            base_gradient = np.zeros_like(self.weights[i])
+            for b in range(batch_size):
+                a_prev_sample = A_prev[b:b+1].T if batch_size > 1 else A_prev.T
+                dz_sample = dZ[b:b+1] if batch_size > 1 else dZ
+                base_gradient += np.dot(a_prev_sample, dz_sample)
+                
             # Add L1 regularization gradient
             l1_gradient = 0
             if self.l1_lambda > 0:
@@ -410,13 +481,16 @@ class NeuralNetwork:
                 # The gradient of L2 is w
                 l2_gradient = self.l2_lambda * self.weights[i]
             
-            # Combine all gradients
+            # Combine gradients
             dldWi.append(base_gradient + l1_gradient + l2_gradient)
+
 
         assert len(self.weights) == len(dldWi)
         assert len(self.biases) == len(dldbi)
-    
+        
         return (dldWi, dldbi)
+
+
 
     def apply_adam_update(self, weights_update, biases_update, batch_size):
         # Apply Adam optimizer update to weights and biases
@@ -491,31 +565,19 @@ class NeuralNetwork:
                 X_batch = X_shuffled[start_idx:end_idx]
                 y_batch = y_shuffled[start_idx:end_idx]
                 
-                # Sum gradients for each input in the batch
-                weights_update = [np.zeros_like(w) if w is not None else None for w in self.weights]
-                biases_update = [np.zeros_like(b) if b is not None else None for b in self.biases]
-
-                batch_loss = 0.0
-                for X_inp, y_inp in zip(X_batch, y_batch):
-                    # Forward pass
-                    preactivations, activations = self.forward_propagation(X_inp)
-                    
-                    # Calculate loss with L1 and L2 regularization
-                    current_loss = self.calculate_total_loss(y_inp, activations[-1])
-                    batch_loss += current_loss
-                    
-                    # Backward pass
-                    current_weights_update, current_biases_update = self.backward_propagation(
-                        preactivations, activations, X_inp, y_inp)
-                    
-                    # Accumulate gradients
-                    weights_update = [w1 + w2 if w1 is not None else None for w1, w2 in zip(weights_update, current_weights_update)]
-                    biases_update = [b1 + b2 if b1 is not None else None for b1, b2 in zip(biases_update, current_biases_update)]
-
+                # Forward pass with entire batch
+                preactivations, activations = self.forward_propagation(X_batch)
                 
-                # Average loss for this batch
+                # Calculate batch loss with L1 and L2 regularization
+                batch_loss = 0.0
+                for j in range(len(X_batch)):
+                    batch_loss += self.calculate_total_loss(y_batch[j], activations[-1][j])
                 batch_loss /= len(X_batch)
                 epoch_loss += batch_loss
+                
+                # Backward pass with the entire batch
+                weights_update, biases_update = self.backward_propagation(
+                    preactivations, activations, X_batch, y_batch)
                 
                 # Add gradient clipping to prevent explosion
                 max_grad_norm = 5
@@ -551,39 +613,37 @@ class NeuralNetwork:
                 print(f"Epoch {i}, Loss: {epoch_loss:.6f}, Learning rate: {current_learning_rate:.6f}")
                 if X_val is not None and y_val is not None:
                     print(f"Epoch {i}, Validation Loss: {val_loss:.6f}")
-
                 
         return self.losses, final_gradients
 
+    
     def calculate_validation_loss(self, X_val, y_val):
+        batch_size = 32
+        n_samples = X_val.shape[0]
+        n_batches = (n_samples + batch_size - 1) // batch_size
+        
         val_loss = 0.0
         
-        for X_inp, y_inp in zip(X_val, y_val):
-            _, activations = self.forward_propagation(X_inp)
+        for b in range(n_batches):
+            start_idx = b * batch_size
+            end_idx = min((b + 1) * batch_size, n_samples)
             
-            current_val_loss = self.calculate_total_loss(y_inp, activations[-1])
-            val_loss += current_val_loss
+            X_batch = X_val[start_idx:end_idx]
+            y_batch = y_val[start_idx:end_idx]
+            
+            _, activations = self.forward_propagation(X_batch)
+            
+            batch_loss = 0.0
+            for j in range(len(X_batch)):
+                batch_loss += self.calculate_total_loss(y_batch[j], activations[-1][j])
+            
+            val_loss += batch_loss
         
-        return val_loss / len(X_val)
-    
+        return val_loss / n_samples
+
     def predict(self, X):
-        # Handle single or multiple inputs
-        if len(X.shape) == 1 or (len(X.shape) == 2 and X.shape[0] == 1):
-            # Single input
-            _, activations = self.forward_propagation(X)
-            return activations[-1]
-        else:
-            # Multiple inputs
-            predictions = []
-            for i in range(X.shape[0]):
-                single_input = X[i:i+1]
-                _, activations = self.forward_propagation(single_input)
-                # We choose to just return the probabilities instead of processing them (processing like choosing the argmax, etc)
-                pred = activations[-1]
-                
-                predictions.append(pred)
-            
-            return np.vstack(predictions)
+        _, activations = self.forward_propagation(X)
+        return activations[-1]
 
     def visualize_neural_network(self, max_neurons_to_display=50, save_path=None):
         """
