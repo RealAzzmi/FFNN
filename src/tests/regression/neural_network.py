@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
+import networkx as nx
 
 
 ##########################################
@@ -127,7 +128,7 @@ def softmax_derivative(x):
     
     # For multi-sample case, we handle only the first sample since our neural network implementation processes serially,
     # basically intead of batch_size x a x b, it's a x b.
-    print("Warning: softmax_derivative received multiple samples. Only using the first sample.")
+    print("Warning: softmax_derivative received multiple samples. Only using the first sample because I don't know math.")
     s_first = s[0]
     n_classes = len(s_first)
     
@@ -159,6 +160,9 @@ class NeuralNetwork:
         self.batch_size = batch_size
         self.initialization_method = initialization_method
         self.verbose = verbose
+        self.losses = []
+        self.val_losses = []
+        self.gradients = []
         
         # Regularization parameters
         self.l1_lambda = l1_lambda
@@ -313,9 +317,11 @@ class NeuralNetwork:
         # Output layer
         preactivations.append(np.dot(activations[-1], self.weights[K-1]) + self.biases[K-1])
         activations.append(self.output_layer_activation_function(preactivations[-1]))
-        
+
+
         for i in range(1, K):
-            assert activations[i].shape == (1, self.layer_sizes[i]) or activations[i].shape == (self.layer_sizes[i],)
+            if len(activations[i].shape) == 1:
+                activations[i] = activations[i].reshape(1, -1)
 
         return (preactivations, activations)
     
@@ -342,6 +348,7 @@ class NeuralNetwork:
 
     def backward_propagation(self, preactivations, activations, X, y):
         K = len(self.layer_sizes)
+        batch_size = X.shape[0] if len(X.shape) > 1 else 1
 
         # Calculate dl/dz_i for output and hidden layers
         dldz_i = []
@@ -356,27 +363,54 @@ class NeuralNetwork:
             dldz_i.append(dldz_K_minus_1)
         else:
             # For other activation/loss combinations
-            Q1 = self.output_layer_activation_derivative(preactivations[K-1])
+            # Handle batch processing by applying the activation derivative to each example
+            dZ = np.zeros_like(preactivations[K-1])
             
-            if self.output_layer_activation_function != softmax:
-                if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
-                    Q1 = np.diag(Q1.flatten())
-                    
-            # Calculate loss derivative
-            Q2 = self.loss_derivative(y, activations[-1])
-            
-            # Final result is Q2 × Q1
-            dldz_i.append(np.dot(Q2, Q1))
+            # Apply activation derivative to each example in batch
+            for b in range(batch_size):
+                sample_preact = preactivations[K-1][b:b+1] if batch_size > 1 else preactivations[K-1]
+                sample_act = activations[-1][b:b+1] if batch_size > 1 else activations[-1]
+                sample_y = y[b:b+1] if batch_size > 1 else y
+                
+                Q1 = self.output_layer_activation_derivative(sample_preact)
+                
+                if self.output_layer_activation_function != softmax:
+                    if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
+                        Q1 = np.diag(Q1.flatten())
+                        
+                # Calculate loss derivative
+                Q2 = self.loss_derivative(sample_y, sample_act)
+                
+                # Apply to current example
+                dZ[b] = np.dot(Q2, Q1).flatten() if batch_size > 1 else np.dot(Q2, Q1)
+                
+            dldz_i.append(dZ)
 
         # Inductive case for hidden layers
         for i in range(K-2, 0, -1):
-            Q1 = self.hidden_layer_activation_derivatives[i](preactivations[i])
+            # Initialize gradient for this layer
+            dZ = np.zeros_like(preactivations[i])
             
-            if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
-                Q1 = np.diag(Q1.flatten())
-
-            Q2 = np.dot(dldz_i[-1], self.weights[i+1].T)
-            dldz_i.append(np.dot(Q2, Q1))
+            # Get upstream gradient
+            dA = dldz_i[-1]
+            
+            # Handle gradient for each example in batch
+            for b in range(batch_size):
+                # Get sample activation derivative
+                sample_preact = preactivations[i][b:b+1] if batch_size > 1 else preactivations[i]
+                Q1 = self.hidden_layer_activation_derivatives[i](sample_preact)
+                
+                if len(Q1.shape) == 1 or (len(Q1.shape) == 2 and Q1.shape[0] == 1):
+                    Q1 = np.diag(Q1.flatten())
+                
+                # Get sample upstream gradient
+                sample_dA = dA[b:b+1] if batch_size > 1 else dA
+                
+                # Calculate gradient for this example
+                Q2 = np.dot(sample_dA, self.weights[i+1].T)
+                dZ[b] = np.dot(Q2, Q1).flatten() if batch_size > 1 else np.dot(Q2, Q1)
+                
+            dldz_i.append(dZ)
 
         dldz_i.append(None)
         dldz_i.reverse()
@@ -388,12 +422,25 @@ class NeuralNetwork:
         dldWi = [None]
 
         for i in range(1, K):
-            # dl/dbi = dl/dzi
-            dldbi.append(dldz_i[i])
+            # dl/dbi = sum of dl/dzi across batch
+            dldbi.append(np.sum(dldz_i[i], axis=0, keepdims=True))
             
             # dl/dwi = A_{i-1}^T dl/dz_i + regularization terms
-            base_gradient = np.dot(activations[i-1].T.reshape(-1, 1), dldz_i[i])
+            A_prev = activations[i-1]
+            dZ = dldz_i[i]
             
+            if len(A_prev.shape) == 1:
+                A_prev = A_prev.reshape(1, -1)
+            if len(dZ.shape) == 1:
+                dZ = dZ.reshape(1, -1)
+                
+            # Calculate gradients for all examples and sum
+            base_gradient = np.zeros_like(self.weights[i])
+            for b in range(batch_size):
+                a_prev_sample = A_prev[b:b+1].T if batch_size > 1 else A_prev.T
+                dz_sample = dZ[b:b+1] if batch_size > 1 else dZ
+                base_gradient += np.dot(a_prev_sample, dz_sample)
+                
             # Add L1 regularization gradient
             l1_gradient = 0
             if self.l1_lambda > 0:
@@ -406,13 +453,16 @@ class NeuralNetwork:
                 # The gradient of L2 is w
                 l2_gradient = self.l2_lambda * self.weights[i]
             
-            # Combine all gradients
+            # Combine gradients
             dldWi.append(base_gradient + l1_gradient + l2_gradient)
+
 
         assert len(self.weights) == len(dldWi)
         assert len(self.biases) == len(dldbi)
-    
+        
         return (dldWi, dldbi)
+
+
 
     def apply_adam_update(self, weights_update, biases_update, batch_size):
         # Apply Adam optimizer update to weights and biases
@@ -453,15 +503,18 @@ class NeuralNetwork:
             
         return new_weights, new_biases
 
-    def fit(self, X, y):
+    def fit(self, X, y, X_val=None, y_val=None):
         n_input = X.shape[0]
         n_batches = max(n_input // self.batch_size, 1)
         
-        losses = []
+        self.losses = []
+        self.val_losses = []
+        final_gradients = [None] * len(self.weights)
         
         # For every epoch/iteration
         for i in range(self.max_iter):
             epoch_loss = 0.0
+            current_epoch_gradients = []
             
             # Learning rate schedule - only for SGD, not for Adam
             if self.optimizer == "sgd":
@@ -484,30 +537,19 @@ class NeuralNetwork:
                 X_batch = X_shuffled[start_idx:end_idx]
                 y_batch = y_shuffled[start_idx:end_idx]
                 
-                # Sum gradients for each input in the batch
-                weights_update = [np.zeros_like(w) if w is not None else None for w in self.weights]
-                biases_update = [np.zeros_like(b) if b is not None else None for b in self.biases]
-
-                batch_loss = 0.0
-                for X_inp, y_inp in zip(X_batch, y_batch):
-                    # Forward pass
-                    preactivations, activations = self.forward_propagation(X_inp)
-                    
-                    # Calculate loss with L1 and L2 regularization
-                    current_loss = self.calculate_total_loss(y_inp, activations[-1])
-                    batch_loss += current_loss
-                    
-                    # Backward pass
-                    current_weights_update, current_biases_update = self.backward_propagation(
-                        preactivations, activations, X_inp, y_inp)
-                    
-                    # Accumulate gradients
-                    weights_update = [w1 + w2 if w1 is not None else None for w1, w2 in zip(weights_update, current_weights_update)]
-                    biases_update = [b1 + b2 if b1 is not None else None for b1, b2 in zip(biases_update, current_biases_update)]
+                # Forward pass with entire batch
+                preactivations, activations = self.forward_propagation(X_batch)
                 
-                # Average loss for this batch
+                # Calculate batch loss with L1 and L2 regularization
+                batch_loss = 0.0
+                for j in range(len(X_batch)):
+                    batch_loss += self.calculate_total_loss(y_batch[j], activations[-1][j])
                 batch_loss /= len(X_batch)
                 epoch_loss += batch_loss
+                
+                # Backward pass with the entire batch
+                weights_update, biases_update = self.backward_propagation(
+                    preactivations, activations, X_batch, y_batch)
                 
                 # Add gradient clipping to prevent explosion
                 max_grad_norm = 5
@@ -524,32 +566,156 @@ class NeuralNetwork:
                     # Use SGD
                     self.weights = [w1 - current_learning_rate * w2 / batch_size if w1 is not None else None for w1, w2 in zip(self.weights, weights_update)]
                     self.biases = [b1 - current_learning_rate * b2 / batch_size if b1 is not None else None for b1, b2 in zip(self.biases, biases_update)]
-            
+                
+                # Store final gradients (after last iteration)
+                if i == self.max_iter - 1:
+                    final_gradients = weights_update
+                    self.gradients = final_gradients
+
             # Average loss for this epoch
             epoch_loss /= n_batches
-            losses.append(epoch_loss)
+            self.losses.append(epoch_loss)
+
+            if X_val is not None and y_val is not None:
+                val_loss = self.calculate_validation_loss(X_val, y_val)
+                self.val_losses.append(val_loss)
             
             # Print progress
             if self.verbose and i % 100 == 0:
                 print(f"Epoch {i}, Loss: {epoch_loss:.6f}, Learning rate: {current_learning_rate:.6f}")
+                if X_val is not None and y_val is not None:
+                    print(f"Epoch {i}, Validation Loss: {val_loss:.6f}")
                 
-        return losses
+        return self.losses, final_gradients
+
+    
+    def calculate_validation_loss(self, X_val, y_val):
+        batch_size = 32
+        n_samples = X_val.shape[0]
+        n_batches = (n_samples + batch_size - 1) // batch_size
+        
+        val_loss = 0.0
+        
+        for b in range(n_batches):
+            start_idx = b * batch_size
+            end_idx = min((b + 1) * batch_size, n_samples)
+            
+            X_batch = X_val[start_idx:end_idx]
+            y_batch = y_val[start_idx:end_idx]
+            
+            _, activations = self.forward_propagation(X_batch)
+            
+            batch_loss = 0.0
+            for j in range(len(X_batch)):
+                batch_loss += self.calculate_total_loss(y_batch[j], activations[-1][j])
+            
+            val_loss += batch_loss
+        
+        return val_loss / n_samples
 
     def predict(self, X):
-        # Handle single or multiple inputs
-        if len(X.shape) == 1 or (len(X.shape) == 2 and X.shape[0] == 1):
-            # Single input
-            _, activations = self.forward_propagation(X)
-            return activations[-1]
-        else:
-            # Multiple inputs
-            predictions = []
-            for i in range(X.shape[0]):
-                single_input = X[i:i+1]
-                _, activations = self.forward_propagation(single_input)
-                # We choose to just return the probabilities instead of processing them (processing like choosing the argmax, etc)
-                pred = activations[-1]
-                
-                predictions.append(pred)
+        _, activations = self.forward_propagation(X)
+        return activations[-1]
+
+    def visualize_neural_network(self, max_neurons_to_display=50, save_path=None):
+        """
+        Visualize the neural network structure with weights and biases.
+        
+        Parameters:
+        ----------
+        max_neurons_to_display : int, optional
+            Maximum number of neurons to display per layer to prevent overcrowding
+        save_path : str, optional
+            Path to save the visualization image
+        """
+        # Create a new figure
+        plt.figure(figsize=(15, 10))
+        
+        # Create a directed graph
+        G = nx.DiGraph()
+        
+        # Prepare position layout
+        pos = {}
+        layer_spacing = 1.0
+        neuron_spacing = 0.2
+        
+        # Compute layer positions and add nodes
+        for layer_idx, layer_size in enumerate(self.layer_sizes[1:], start=1):
+            # Limit number of displayed neurons
+            displayed_neurons = min(layer_size, max_neurons_to_display)
             
-            return np.vstack(predictions)
+            for neuron_idx in range(displayed_neurons):
+                # X position based on layer
+                x = layer_idx * layer_spacing
+                
+                # Y position based on neuron index, centered
+                y = neuron_idx * neuron_spacing - (displayed_neurons * neuron_spacing / 2)
+                
+                # Create unique node identifier
+                node_id = f'L{layer_idx}_N{neuron_idx}'
+                
+                # Add node with color representing bias
+                bias = self.biases[layer_idx][0, neuron_idx] if self.biases[layer_idx] is not None else 0
+                
+                G.add_node(node_id, pos=(x, y), bias=bias)
+                pos[node_id] = (x, y)
+        
+        # Add edges with weights
+        for layer_idx in range(1, len(self.layer_sizes)-1):
+            prev_layer_neurons = min(self.layer_sizes[layer_idx], max_neurons_to_display)
+            curr_layer_neurons = min(self.layer_sizes[layer_idx+1], max_neurons_to_display)
+            
+            for prev_neuron in range(prev_layer_neurons):
+                for curr_neuron in range(curr_layer_neurons):
+                    # Unique identifiers
+                    from_node = f'L{layer_idx}_N{prev_neuron}'
+                    to_node = f'L{layer_idx+1}_N{curr_neuron}'
+                    
+                    # Get weight
+                    weight = self.weights[layer_idx+1][prev_neuron, curr_neuron]
+                    
+                    # Add weighted edge
+                    G.add_edge(from_node, to_node, weight=weight)
+        
+        # Prepare color mappings
+        def safe_normalize(values):
+            """Safely normalize values to [0, 1] range."""
+            if not values:
+                return lambda x: 0.5
+            min_val, max_val = min(values), max(values)
+            return lambda x: 0.5 if min_val == max_val else (x - min_val) / (max_val - min_val)
+        
+        # Collect bias and weight values for normalization
+        bias_values = [G.nodes[node]['bias'] for node in G.nodes()]
+        weight_values = [G[u][v]['weight'] for (u,v) in G.edges()]
+        
+        # Create normalizers
+        bias_normalizer = safe_normalize(bias_values)
+        weight_normalizer = safe_normalize(weight_values)
+        
+        # Draw the graph
+        plt.title('Neural Network Structure Visualization')
+        
+        # Draw nodes
+        nx.draw_networkx_nodes(G, pos, 
+                                node_color=[plt.cm.coolwarm(bias_normalizer(G.nodes[node]['bias'])) 
+                                            for node in G.nodes()],
+                                node_size=50, 
+                                alpha=0.7)
+        
+        # Draw edges
+        nx.draw_networkx_edges(G, pos, 
+                                edge_color=[plt.cm.RdBu_r(weight_normalizer(G[u][v]['weight'])) 
+                                            for (u,v) in G.edges()],
+                                width=1, 
+                                alpha=0.5)
+        
+        # Finalize plot
+        plt.axis('off')
+        plt.tight_layout()
+        
+        # Save or show the plot
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+        else:
+            plt.show()

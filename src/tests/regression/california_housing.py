@@ -107,7 +107,7 @@ def test_custom_nn():
     y_train_reshaped = y_train.reshape(-1, 1)
     
     # Fit the custom neural network
-    losses = custom_nn.fit(X_train, y_train_reshaped)
+    losses, _ = custom_nn.fit(X_train, y_train_reshaped)
     
     training_time = time.time() - start_time
     print(f"Custom NN Training Time: {training_time:.2f} seconds")
