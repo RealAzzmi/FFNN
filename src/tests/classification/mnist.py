@@ -30,11 +30,11 @@ def load_mnist_data(n_samples=None):
     X = X / 255.0
     
     # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, random_state=42)
     
-    print(f"Data loaded: {X_train.shape[0]} training samples, {X_test.shape[0]} test samples")
-    return X_train, X_test, y_train, y_test
+    print(f"Data loaded: {X_train.shape[0]} training samples, {X_val.shape[0]} test samples")
+    return X_train, X_val, y_train, y_val
 
 def one_hot_encode(y, n_classes=10):
     """Convert integer labels to one-hot encoded vectors."""
@@ -72,12 +72,12 @@ def visualize_results(custom_losses, sklearn_accuracy, custom_accuracy):
     # plt.savefig('mnist_comparison_results.png')
     plt.show()
 
-def visualize_confusion_matrices(y_test, sklearn_preds, custom_preds):
+def visualize_confusion_matrices(y_val, sklearn_preds, custom_preds):
     """Visualize confusion matrices for both models."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
     # Sklearn MLP confusion matrix
-    cm_sklearn = confusion_matrix(y_test, sklearn_preds)
+    cm_sklearn = confusion_matrix(y_val, sklearn_preds)
     im1 = ax1.imshow(cm_sklearn, interpolation='nearest', cmap=plt.cm.Blues)
     ax1.set_title('Scikit-Learn MLP Confusion Matrix')
     ax1.set_xlabel('Predicted')
@@ -85,9 +85,14 @@ def visualize_confusion_matrices(y_test, sklearn_preds, custom_preds):
     ax1.set_xticks(np.arange(10))
     ax1.set_yticks(np.arange(10))
     fig.colorbar(im1, ax=ax1)
+
+    # Display values inside confusion matrix
+    for i in range(cm_sklearn.shape[0]):
+        for j in range(cm_sklearn.shape[1]):
+            ax1.text(j, i, str(cm_sklearn[i, j]), ha='center', va='center', color='white' if cm_sklearn[i, j] > cm_sklearn.max() / 2 else 'black')
     
     # Custom NN confusion matrix
-    cm_custom = confusion_matrix(y_test, custom_preds)
+    cm_custom = confusion_matrix(y_val, custom_preds)
     im2 = ax2.imshow(cm_custom, interpolation='nearest', cmap=plt.cm.Blues)
     ax2.set_title('Custom Neural Network Confusion Matrix')
     ax2.set_xlabel('Predicted')
@@ -95,26 +100,32 @@ def visualize_confusion_matrices(y_test, sklearn_preds, custom_preds):
     ax2.set_xticks(np.arange(10))
     ax2.set_yticks(np.arange(10))
     fig.colorbar(im2, ax=ax2)
+
+    # Display values inside confusion matrix
+    for i in range(cm_custom.shape[0]):
+        for j in range(cm_custom.shape[1]):
+            ax2.text(j, i, str(cm_custom[i, j]), ha='center', va='center', color='white' if cm_custom[i, j] > cm_custom.max() / 2 else 'black')
     
     plt.tight_layout()
     # plt.savefig('mnist_confusion_matrices.png')
     plt.show()
 
 def use_mnist(custom_nn):
-    X_train, X_test, y_train, y_test = load_mnist_data(n_samples=1000)
+    X_train, X_val, y_train, y_val = load_mnist_data(n_samples=1000)
     y_train_one_hot = one_hot_encode(y_train)
+    y_val_one_hot = one_hot_encode(y_val)
 
     #Train Sklearn
     print("\nTraining Scikit-Learn MLP Classifier...")
     start_time = time.time()
     
     sklearn_mlp = MLPClassifier(
-        hidden_layer_sizes=(128, 64),
+        hidden_layer_sizes=(256, 128),
         activation='relu',
         solver='adam',
         alpha=0.0001,
         batch_size=256,
-        learning_rate_init=0.001,
+        learning_rate_init=0.01,
         max_iter=50,
         verbose=True,
         random_state=42
@@ -122,44 +133,45 @@ def use_mnist(custom_nn):
     
     sklearn_mlp.fit(X_train, y_train)
     sklearn_time = time.time() - start_time
-    sklearn_preds = sklearn_mlp.predict(X_test)
-    sklearn_accuracy = accuracy_score(y_test, sklearn_preds)
-    conf_matrix_sklearn = confusion_matrix(y_test, sklearn_preds)
+    sklearn_preds = sklearn_mlp.predict(X_val)
+    sklearn_accuracy = accuracy_score(y_val, sklearn_preds)
+    conf_matrix_sklearn = confusion_matrix(y_val, sklearn_preds)
 
     # Train Custom Neural Network
     print("\nTraining Custom Neural Network...")
     start_time = time.time()
     custom_losses = []
-    custom_losses, final_gradients = custom_nn.fit(X_train.values, y_train_one_hot)
+    custom_losses, final_gradients = custom_nn.fit(X_train.values, y_train_one_hot, X_val.values, y_val_one_hot)
     custom_time = time.time() - start_time
-    custom_probs = custom_nn.predict(X_test.values)
+    custom_probs = custom_nn.predict(X_val.values)
     custom_preds = np.argmax(custom_probs, axis=1)
-    custom_accuracy = accuracy_score(y_test, custom_preds)
-    conf_matrix_custom = confusion_matrix(y_test, custom_preds)
+    custom_accuracy = accuracy_score(y_val, custom_preds)
+    conf_matrix_custom = confusion_matrix(y_val, custom_preds)
 
-    return custom_nn, custom_losses, final_gradients, custom_time, custom_accuracy, conf_matrix_custom, sklearn_time, sklearn_accuracy, conf_matrix_sklearn
+    return custom_nn, custom_losses, final_gradients, custom_time, custom_accuracy, conf_matrix_custom, sklearn_time, sklearn_accuracy, conf_matrix_sklearn, X_val, y_val, sklearn_mlp
 
 
 
 def main():
     # Load and preprocess the MNIST dataset
     # Use a smaller subset for faster training
-    X_train, X_test, y_train, y_test = load_mnist_data(n_samples=1000)
+    X_train, X_val, y_train, y_val = load_mnist_data(n_samples=1000)
     
     # One-hot encode the target for custom neural network
     y_train_one_hot = one_hot_encode(y_train)
+    y_val_one_hot = one_hot_encode(y_val)
     
     # Train Scikit-Learn MLP Classifier
     print("\nTraining Scikit-Learn MLP Classifier...")
     start_time = time.time()
     
     sklearn_mlp = MLPClassifier(
-        hidden_layer_sizes=(128, 64),
+        hidden_layer_sizes=(256, 128),
         activation='relu',
         solver='adam',
         alpha=0.0001,
         batch_size=256,
-        learning_rate_init=0.001,
+        learning_rate_init=0.01,
         max_iter=50,
         verbose=True,
         random_state=42
@@ -176,11 +188,11 @@ def main():
     else:  
         # Input size is 784 (28x28 pixels), output size is 10 (digit classes 0-9)
         custom_nn = NeuralNetwork(
-            layer_sizes=[784, 128, 64, 10],
+            layer_sizes=[784, 256, 128, 10],
             hidden_layer_activation_functions=[relu, relu],
             output_layer_activation_function=softmax,
             loss_function=categorical_cross_entropy,
-            learning_rate=0.001,
+            learning_rate=0.01,
             max_iter=50,
             batch_size=256,
             optimizer="adam",
@@ -196,7 +208,7 @@ def main():
     custom_losses = []
     
     # Train the custom neural network one sample at a time
-    custom_losses, _ = custom_nn.fit(X_train.values, y_train_one_hot)
+    custom_losses, _ = custom_nn.fit(X_train.values, y_train_one_hot, X_val.values, y_val_one_hot)
 
     
     
@@ -204,19 +216,19 @@ def main():
     print(f"Custom Neural Network training time: {custom_time:.2f} seconds")
     
     # Evaluate Scikit-Learn MLP
-    sklearn_preds = sklearn_mlp.predict(X_test)
-    sklearn_accuracy = accuracy_score(y_test, sklearn_preds)
+    sklearn_preds = sklearn_mlp.predict(X_val)
+    sklearn_accuracy = accuracy_score(y_val, sklearn_preds)
     print(f"\nScikit-Learn MLP Accuracy: {sklearn_accuracy:.4f}")
     print("\nScikit-Learn MLP Classification Report:")
-    print(classification_report(y_test, sklearn_preds))
+    print(classification_report(y_val, sklearn_preds))
     
     # Evaluate Custom Neural Network
-    custom_probs = custom_nn.predict(X_test.values)
+    custom_probs = custom_nn.predict(X_val.values)
     custom_preds = np.argmax(custom_probs, axis=1)
-    custom_accuracy = accuracy_score(y_test, custom_preds)
+    custom_accuracy = accuracy_score(y_val, custom_preds)
     print(f"\nCustom Neural Network Accuracy: {custom_accuracy:.4f}")
     print("\nCustom Neural Network Classification Report:")
-    print(classification_report(y_test, custom_preds))
+    print(classification_report(y_val, custom_preds))
 
     #Save results
     save_neural_network(custom_nn, 'mnist_neural_network.pkl')
@@ -225,7 +237,7 @@ def main():
     # Visualize results
     print("\nGenerating visualizations...")
     visualize_results(custom_losses, sklearn_accuracy, custom_accuracy)
-    visualize_confusion_matrices(y_test, sklearn_preds, custom_preds)
+    visualize_confusion_matrices(y_val, sklearn_preds, custom_preds)
     
     # Compare training time
     print(f"\nTraining time comparison:")

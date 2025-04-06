@@ -353,25 +353,26 @@ class NeuralNetwork:
 
         return (preactivations, activations)
     
-    def calculate_total_loss(self, y, y_pred):
-        # Calculate the original loss function
+    def calculate_total_loss(self, y, y_pred, include_regularization=True):
         original_loss = self.loss_function(y, y_pred)
-        
-        # Calculate L1 regularization term
+
+        if not include_regularization:
+            return original_loss
+
+        # L1 Regularization
         l1_reg_term = 0.0
         if self.l1_lambda > 0:
             for i in range(1, len(self.weights)):
                 if self.weights[i] is not None:
                     l1_reg_term += np.sum(np.abs(self.weights[i]))
-        
-        # Calculate L2 regularization term
+
+        # L2 Regularization
         l2_reg_term = 0.0
         if self.l2_lambda > 0:
             for i in range(1, len(self.weights)):
                 if self.weights[i] is not None:
                     l2_reg_term += np.sum(np.square(self.weights[i]))
-        
-        # Return the combined loss
+
         return original_loss + self.l1_lambda * l1_reg_term + 0.5 * self.l2_lambda * l2_reg_term
 
     def backward_propagation(self, preactivations, activations, X, y):
@@ -542,7 +543,7 @@ class NeuralNetwork:
         # For every epoch/iteration
         for i in range(self.max_iter):
             epoch_loss = 0.0
-            current_epoch_gradients = []
+            # current_epoch_gradients = []
             
             # Learning rate schedule - only for SGD, not for Adam
             if self.optimizer == "sgd":
@@ -571,7 +572,9 @@ class NeuralNetwork:
                 # Calculate batch loss with L1 and L2 regularization
                 batch_loss = 0.0
                 for j in range(len(X_batch)):
-                    batch_loss += self.calculate_total_loss(y_batch[j], activations[-1][j])
+                    y_true = y_batch[j].flatten()
+                    y_pred = activations[-1][j].flatten()
+                    batch_loss += self.calculate_total_loss(y_true, y_pred)
                 batch_loss /= len(X_batch)
                 epoch_loss += batch_loss
                 
@@ -605,14 +608,42 @@ class NeuralNetwork:
             self.losses.append(epoch_loss)
 
             if X_val is not None and y_val is not None:
-                val_loss = self.calculate_validation_loss(X_val, y_val)
+                # Process validation data in batches for consistency and efficiency
+                val_batch_size = self.batch_size  # Use same batch size as training
+                n_val_samples = X_val.shape[0]
+                n_val_batches = (n_val_samples + val_batch_size - 1) // val_batch_size
+                
+                total_val_loss = 0.0
+                
+                for b in range(n_val_batches):
+                    start_idx = b * val_batch_size
+                    end_idx = min((b + 1) * val_batch_size, n_val_samples)
+                    
+                    X_val_batch = X_val[start_idx:end_idx]
+                    y_val_batch = y_val[start_idx:end_idx]
+                    
+                    # Forward pass
+                    preactivations_val, activations_val = self.forward_propagation(X_val_batch)
+                    
+                    # Calculate batch validation loss
+                    batch_val_loss = 0.0
+                    for j in range(len(X_val_batch)):
+                        y_true = y_val_batch[j].flatten()
+                        y_pred = activations_val[-1][j].flatten()
+                        # Don't include regularization in validation loss
+                        batch_val_loss += self.calculate_total_loss(y_true, y_pred, include_regularization=False)
+                    
+                    batch_val_loss /= len(X_val_batch)
+                    total_val_loss += batch_val_loss
+                
+                # Average validation loss
+                val_loss = total_val_loss / n_val_batches 
                 self.val_losses.append(val_loss)
-            
-            # Print progress
-            if self.verbose and i % 100 == 0:
-                print(f"Epoch {i}, Loss: {epoch_loss:.6f}, Learning rate: {current_learning_rate:.6f}")
-                if X_val is not None and y_val is not None:
-                    print(f"Epoch {i}, Validation Loss: {val_loss:.6f}")
+                
+                if self.verbose and i % 5 == 0: 
+                    print(f"Epoch {i}, Train Loss: {epoch_loss:.6f}, Val Loss: {val_loss:.6f}")
+            elif self.verbose and i % 5 == 0:
+                print(f"Epoch {i}, Loss: {epoch_loss:.6f}")
                 
         return self.losses, final_gradients
 
@@ -635,7 +666,9 @@ class NeuralNetwork:
             
             batch_loss = 0.0
             for j in range(len(X_batch)):
-                batch_loss += self.calculate_total_loss(y_batch[j], activations[-1][j])
+                y_true = y_batch[j].flatten()
+                y_pred = activations[-1][j].flatten()
+                batch_loss += self.calculate_total_loss(y_true, y_pred, include_regularization=False)
             
             val_loss += batch_loss
         
