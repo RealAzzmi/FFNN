@@ -69,6 +69,10 @@ def parse_config_file(file_path):
                     config['max_iter'] = int(value)
                 elif key == 'BATCH_SIZE':
                     config['batch_size'] = int(value)
+                elif key == 'OPTIMIZER':
+                    config['optimizer'] = value
+                elif key == 'INITIALIZATION_METHOD':
+                    config['initialization_method'] = value
                 elif key == 'VERBOSE':
                     config['verbose'] = value.lower() == 'true'
     
@@ -80,14 +84,16 @@ def parse_args():
     
     parser.add_argument('--default', action='store_true', help="Use default configuration from config.py")
     
-    parser.add_argument('--layer_sizes', type=int, nargs='+', default=LAYER_SIZES, help="List of layer sizes (e.g., 2 32 16 1)")
-    parser.add_argument('--hidden_activations', type=str, nargs='+', default=['relu', 'relu'], help="List of hidden layer activation functions (e.g., relu relu)")
-    parser.add_argument('--output_activation', type=str, default='sigmoid', help="Output layer activation function (e.g., sigmoid)")
-    parser.add_argument('--loss_function', type=str, default='binary_cross_entropy', help="Loss function (e.g., binary_cross_entropy)")
-    parser.add_argument('--learning_rate', type=float, default=0.001, help="Learning rate (e.g., 0.001)")
-    parser.add_argument('--max_iter', type=int, default=400, help="Maximum number of iterations (e.g., 400)")
-    parser.add_argument('--batch_size', type=int, default=64, help="Batch size (e.g., 64)")
-    parser.add_argument('--verbose', type=bool, default=True, help="Verbose mode (True/False)")
+    parser.add_argument('--layer_sizes', type=int, nargs='+', default=LAYER_SIZES, help="List of layer sizes (e.g., 784 128 64 10)")
+    parser.add_argument('--hidden_activations', type=str, nargs='+', default=HIDDEN_LAYER_ACTIVATIONS, help="List of hidden layer activation functions (e.g., relu relu)")
+    parser.add_argument('--output_activation', type=str, default=OUTPUT_LAYER_ACTIVATION, help="Output layer activation function (e.g., sigmoid)")
+    parser.add_argument('--loss_function', type=str, default=LOSS_FUNCTION, help="Loss function (e.g., binary_cross_entropy)")
+    parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE, help="Learning rate (e.g., 0.001)")
+    parser.add_argument('--max_iter', type=int, default=MAX_ITER, help="Maximum number of iterations (e.g., 400)")
+    parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help="Batch size (e.g., 64)")
+    parser.add_argument('--optimizer', type=str, default=OPTIMIZER, help="Optimizer to use (e.g., adam, sgd)")
+    parser.add_argument('--initialization_method', type=str, default=INITIALIZATION_METHOD, help="Weight initialization method (e.g., he, xavier)")
+    parser.add_argument('--verbose', type=bool, default=VERBOSE, help="Verbose mode (True/False)")
 
     parser.add_argument('--config_file', type=str, help="Path to configuration file")
     
@@ -100,7 +106,8 @@ def get_config_interactively():
         '1': ('Linear', linear),
         '2': ('ReLU', relu),
         '3': ('Sigmoid', sigmoid),
-        '4': ('Tanh', tanh)
+        '4': ('Tanh', tanh),
+        '5': ('Softmax', softmax)
     }
 
     loss_function_options = {
@@ -150,6 +157,8 @@ def get_config_interactively():
     learning_rate = float(get_input(f"Learning rate? (default: {LEARNING_RATE}): ", str(LEARNING_RATE)))
     max_iter = int(get_input(f"Maximum iterations? (default: {MAX_ITER}): ", str(MAX_ITER)))
     batch_size = int(get_input(f"Batch size? (default: {BATCH_SIZE}): ", str(BATCH_SIZE)))
+    optimizer = get_input(f"Choose optimizer (adam/sgd, default: {OPTIMIZER}): ", str(OPTIMIZER))
+    initialization_method = get_input(f"Choose weight initialization method (he/xavier, default: {INITIALIZATION_METHOD}): ", str(INITIALIZATION_METHOD))
 
     # Get verbose mode
     verbose = get_input("Would you like to see progress during training? (yes/no, default: yes): ", "yes").lower() == "yes"
@@ -166,5 +175,7 @@ def get_config_interactively():
         'learning_rate': learning_rate,
         'max_iter': max_iter,
         'batch_size': batch_size,
+        'optimizer': optimizer,
+        'initialization_method': initialization_method,
         'verbose': verbose
     }
