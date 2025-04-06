@@ -209,7 +209,7 @@ def main():
         )
         
         start_time = time.time()
-        losses_tuned = custom_nn_tuned.fit(X_train_scaled, y_train)
+        losses = custom_nn_tuned.fit(X_train_scaled, y_train)
         custom_tuned_time = time.time() - start_time
         
         y_pred_custom_tuned = np.array([custom_nn_tuned.predict(x).flatten() for x in X_test_scaled])

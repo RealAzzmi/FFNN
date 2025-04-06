@@ -5,4 +5,6 @@ LOSS_FUNCTION = categorical_cross_entropy
 LEARNING_RATE = 0.001
 MAX_ITER = 50
 BATCH_SIZE = 256
+OPTIMIZER = "adam"
+INITIALIZATION_METHOD = "he"
 VERBOSE = True
