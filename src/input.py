@@ -1,4 +1,4 @@
-from neural_network import relu, sigmoid, tanh, linear, softmax
+from neural_network import relu, sigmoid, tanh, linear, softmax, elu, gelu
 from neural_network import mean_squared_error, categorical_cross_entropy, binary_cross_entropy
 from config import *
 import argparse
@@ -10,7 +10,9 @@ def get_activation_function(name):
         'sigmoid': sigmoid,
         'tanh': tanh,
         'linear': linear,
-        'softmax': softmax
+        'softmax': softmax,
+        'elu': elu,
+        'gel': gelu,
     }
     return activations.get(name, relu)  
 
@@ -71,6 +73,10 @@ def parse_config_file(file_path):
                     config['batch_size'] = int(value)
                 elif key == 'OPTIMIZER':
                     config['optimizer'] = value
+                elif key == 'L1_LAMBDA':
+                    config['l1_lambda'] = float(value)
+                elif key == 'L2_LAMBDA':
+                    config['l2_lambda'] = float(value)
                 elif key == 'INITIALIZATION_METHOD':
                     config['initialization_method'] = value
                 elif key == 'VERBOSE':
@@ -92,6 +98,8 @@ def parse_args():
     parser.add_argument('--max_iter', type=int, default=MAX_ITER, help="Maximum number of iterations (e.g., 400)")
     parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help="Batch size (e.g., 64)")
     parser.add_argument('--optimizer', type=str, default=OPTIMIZER, help="Optimizer to use (e.g., adam, sgd)")
+    parser.add_argument('--l1_lambda', type=float, default=L1_LAMBDA, help="L1 regularization parameter (e.g., 0.01)")
+    parser.add_argument('--l2_lambda', type=float, default=L2_LAMBDA, help="L2 regularization parameter (e.g., 0.01)")
     parser.add_argument('--initialization_method', type=str, default=INITIALIZATION_METHOD, help="Weight initialization method (e.g., he, xavier)")
     parser.add_argument('--verbose', type=bool, default=VERBOSE, help="Verbose mode (True/False)")
 
@@ -107,7 +115,9 @@ def get_config_interactively():
         '2': ('ReLU', relu),
         '3': ('Sigmoid', sigmoid),
         '4': ('Tanh', tanh),
-        '5': ('Softmax', softmax)
+        '5': ('Softmax', softmax),
+        '6': ('ELU', elu),
+        '7': ('GELU', gelu)
     }
 
     loss_function_options = {
@@ -158,6 +168,8 @@ def get_config_interactively():
     max_iter = int(get_input(f"Maximum iterations? (default: {MAX_ITER}): ", str(MAX_ITER)))
     batch_size = int(get_input(f"Batch size? (default: {BATCH_SIZE}): ", str(BATCH_SIZE)))
     optimizer = get_input(f"Choose optimizer (adam/sgd, default: {OPTIMIZER}): ", str(OPTIMIZER))
+    l1_lambda = float(get_input(f"L1 regularization parameter? (default: {L1_LAMBDA}): ", str(L1_LAMBDA)))
+    l2_lambda = float(get_input(f"L2 regularization parameter? (default: {L2_LAMBDA}): ", str(L2_LAMBDA)))
     initialization_method = get_input(f"Choose weight initialization method (he/xavier, default: {INITIALIZATION_METHOD}): ", str(INITIALIZATION_METHOD))
 
     # Get verbose mode
@@ -176,6 +188,8 @@ def get_config_interactively():
         'max_iter': max_iter,
         'batch_size': batch_size,
         'optimizer': optimizer,
+        'l1_lambda': l1_lambda,
+        'l2_lambda': l2_lambda,
         'initialization_method': initialization_method,
         'verbose': verbose
     }

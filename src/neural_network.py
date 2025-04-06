@@ -7,6 +7,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
+from scipy.special import erf, erfinv, erfc, ndtr, ndtri  # ndtr = Φ(x), ndtri = Φ⁻¹(x)
+from scipy.stats import norm
 import networkx as nx
 
 
@@ -142,6 +144,36 @@ def softmax_derivative(x):
     
     return jacobian
 
+
+# ELU Activation Function
+def elu(x, alpha=1.0):
+    return np.where(x > 0, x, alpha * (np.exp(x) - 1))
+
+# Derivative of ELU
+def elu_derivative(x, alpha=1.0):
+    # For x > 0, derivative is 1
+    # For x < 0, derivative is alpha * exp(x)
+    # For x = 0, derivative is 1 if alpha = 1 (to make it continuous and differentiable)
+    derivative = np.where(x > 0, 1, alpha * np.exp(x))
+    
+    # Optional: enforce smoothness at x=0 only if alpha == 1
+    if np.isscalar(x):
+        if x == 0 and alpha == 1:
+            derivative = 1
+    else:
+        derivative = np.where((x == 0) & (alpha == 1), 1, derivative)
+
+    return derivative
+
+def gelu(x):
+    return 0.5 * x * (1 + erf(x / np.sqrt(2)))
+
+# Derivative of GELU
+def gelu_derivative(x):
+    phi = norm.pdf(x)   # φ(x) = standard normal PDF
+    Phi = norm.cdf(x)   # Φ(x) = standard normal CDF
+    return Phi + x * phi
+
 class NeuralNetwork:
     def __init__(self, layer_sizes, initialization_method=None, hidden_layer_activation_functions=[], 
                  output_layer_activation_function=None, loss_function=None, learning_rate=0.01, 
@@ -213,6 +245,10 @@ class NeuralNetwork:
                 self.hidden_layer_activation_derivatives.append(tanh_derivative)
             elif func == softmax:
                 self.hidden_layer_activation_derivatives.append(softmax_derivative)
+            elif func == elu:
+                self.hidden_layer_activation_derivatives.append(elu_derivative)
+            elif func == gelu:
+                self.hidden_layer_activation_derivatives.append(gelu_derivative)
             else:
                 print("Hidden layer activation function not yet implemented!")
                 exit(0)
@@ -228,6 +264,10 @@ class NeuralNetwork:
             self.output_layer_activation_derivative = tanh_derivative
         elif self.output_layer_activation_function == softmax:
             self.output_layer_activation_derivative = softmax_derivative
+        elif self.output_layer_activation_function == elu:  
+            self.output_layer_activation_derivative = elu_derivative
+        elif self.output_layer_activation_function == gelu:
+            self.output_layer_activation_derivative = gelu_derivative
         else:
             print("Output layer activation layer not yet implemented!")
             exit(0)

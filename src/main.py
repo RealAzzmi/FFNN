@@ -1,11 +1,11 @@
 from input import parse_args, parse_config_file, get_config_interactively
 from config import *
 from loadsave import load_neural_network, save_neural_network
-from visualizer import plot_confusion_matrices, plot_loss_curve, plot_weight_distribution, plot_weight_gradient_distribution, visualize_confusion_matrices, visualize_results
+from visualizer import plot_confusion_matrices, plot_loss_curve, plot_weight_distribution, plot_weight_gradient_distribution
 from neural_network import NeuralNetwork
 from make_moon import use_make_moon
 from tests.classification.mnist import use_mnist
-from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report
 import numpy as np
 
 def main():
@@ -43,6 +43,8 @@ def main():
                 'max_iter': MAX_ITER,
                 'batch_size': BATCH_SIZE,
                 'optimizer': OPTIMIZER,
+                'l1_lambda': L1_LAMBDA,
+                'l2_lambda': L2_LAMBDA,
                 'initialization_method': INITIALIZATION_METHOD,
                 'verbose': VERBOSE
             }
@@ -58,6 +60,8 @@ def main():
         max_iter=config['max_iter'],
         batch_size=config['batch_size'],
         optimizer=config['optimizer'],
+        l1_lambda=config['l1_lambda'],
+        l2_lambda=config['l2_lambda'],
         initialization_method=config['initialization_method'],
         verbose=config['verbose']
         )
@@ -87,7 +91,7 @@ def main():
     print(classification_report(y_val, sklearn_preds))
     
     # Evaluate Custom Neural Network
-    custom_probs = custom_nn.predict(X_val.values)
+    custom_probs = custom_nn.predict(X_val)
     custom_preds = np.argmax(custom_probs, axis=1)
     custom_accuracy = accuracy_score(y_val, custom_preds)
     print(f"\nCustom Neural Network Accuracy: {custom_accuracy:.4f}")
@@ -103,6 +107,8 @@ def main():
     print(f"Maximum Iterations: {config['max_iter']}")
     print(f"Batch Size: {config['batch_size']}")
     print(f"Optimizer: {config['optimizer']}")
+    print(f"L1 Regularization Lambda: {config['l1_lambda']}")
+    print(f"L2 Regularization Lambda: {config['l2_lambda']}")
     print(f"Weight Initialization Method: {config['initialization_method']}")
     print(f"Verbose Mode: {'Yes' if config['verbose'] else 'No'}")
 

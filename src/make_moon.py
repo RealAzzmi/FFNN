@@ -51,7 +51,7 @@ def use_make_moon(nn):
     accuracy_sklearn = accuracy_score(y_test, y_pred_sklearn)
     conf_matrix_sklearn = confusion_matrix(y_test, y_pred_sklearn)
 
-    return nn, train_losses, final_gradients, custom_training_time, accuracy_nn, conf_matrix_custom, sklearn_training_time, accuracy_sklearn, conf_matrix_sklearn
+    return nn, train_losses, final_gradients, custom_training_time, accuracy_nn, conf_matrix_custom, sklearn_training_time, accuracy_sklearn, conf_matrix_sklearn, X_test, y_test, sklearn_nn
 
 
 def make_moon():
