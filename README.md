@@ -88,7 +88,7 @@ VERBOSE = True
 
 | **NIM**    | **Penanggung Jawab**           | **Tugas**                                                                 |
 |------------|---------------------------------|--------------------------------------------------------------------------|
-| 13522069   | Nabila Shikoofa Muida          | - Activation & Loss Function                                             |
+| 13522069   | Nabila Shikoofa Muida          | - Testing, Activation & Loss Function                                             |
 |            |                                 | - Report Chapter 1, 2.2, 3                                               |
 | 13522087   | Shulha                          | - I/O, Modularization & Visualization                                    |
 |            |                                 | - Report Chapter 2.1                                                     |
